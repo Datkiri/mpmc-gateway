@@ -261,7 +261,7 @@ func (m *Mapper) Translate(pk packet.Packet) (packet.Packet, error) {
 			// A 1.26.30 host sends sub-chunks as **v8** (no Y byte); a 1.26.51 client needs **v9**
 			// (a Y byte right after the storage count). Bedrock can read v1/v8/v9 but always writes
 			// v9 back, so newer clients only accept v9.
-			if m.targetProto == 2193 {
+			if m.targetProto == 2193 || m.targetProto == NativeProtocol {
 				y := int8(int32(p.Position[1]) + int32(e.Offset[1]))
 				converted = upgradeSubChunkV9(converted, y)
 			}

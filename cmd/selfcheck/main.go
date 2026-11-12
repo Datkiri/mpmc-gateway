@@ -39,6 +39,7 @@ import (
 	v1_26_30 "github.com/shawtymarco/go-multiversion/protocols/v1_26_30"
 	v1_26_44 "github.com/shawtymarco/go-multiversion/protocols/v1_26_44"
 	v1_26_45 "github.com/shawtymarco/go-multiversion/protocols/v1_26_45"
+	v1_26_50 "github.com/shawtymarco/go-multiversion/protocols/v1_26_50"
 )
 
 // defaultDrainWindow is how long a session keeps reading packets when -soak is
@@ -224,9 +225,11 @@ func codecFor(id int32) (minecraft.Protocol, error) {
 	case 2169:
 		return v1_26_45.New(), nil
 	case 2193:
+		return v1_26_50.New(), nil
+	case 2225:
 		return minecraft.DefaultProtocol, nil
 	default:
-		return nil, fmt.Errorf("invalid -proto %d (valid: 1001|2168|2169|2193)", id)
+		return nil, fmt.Errorf("invalid -proto %d (valid: 1001|2168|2169|2193|2225)", id)
 	}
 }
 
@@ -764,7 +767,7 @@ func printSummary(sessions []session, cfg config) {
 func run() int {
 	var (
 		addr         = flag.String("addr", "127.0.0.1:19164", "RakNet listener address of the relay")
-		proto        = flag.Int("proto", 2193, "client protocol (1001|2168|2169|2193)")
+		proto        = flag.Int("proto", 2193, "client protocol (1001|2168|2169|2193|2225)")
 		spawnTimeout = flag.Duration("spawn-timeout", 15*time.Second, "timeout for dial + DoSpawn")
 		soak         = flag.Duration("soak", 0, "keep the connection and read packets for this long (>0 enables the soak assertion)")
 		reconnect    = flag.Int("reconnect", 0, "number of additional reconnects after the initial session (total = 1 + N)")

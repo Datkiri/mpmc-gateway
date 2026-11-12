@@ -37,6 +37,7 @@ import (
 	v1_26_30 "github.com/shawtymarco/go-multiversion/protocols/v1_26_30"
 	v1_26_44 "github.com/shawtymarco/go-multiversion/protocols/v1_26_44"
 	v1_26_45 "github.com/shawtymarco/go-multiversion/protocols/v1_26_45"
+	v1_26_50 "github.com/shawtymarco/go-multiversion/protocols/v1_26_50"
 )
 
 type config struct {
@@ -66,9 +67,11 @@ func codecFor(id int32) (minecraft.Protocol, error) {
 	case 2169:
 		return v1_26_45.New(), nil
 	case 2193:
+		return v1_26_50.New(), nil
+	case 2225:
 		return minecraft.DefaultProtocol, nil
 	default:
-		return nil, fmt.Errorf("invalid -proto %d (valid: 1001|2168|2169|2193)", id)
+		return nil, fmt.Errorf("invalid -proto %d (valid: 1001|2168|2169|2193|2225)", id)
 	}
 }
 
@@ -316,7 +319,7 @@ func run() int {
 	var (
 		addr         = flag.String("addr", "", "RakNet endpoint: relay listener, or BDS address when -direct is set")
 		direct       = flag.Bool("direct", false, "treat -addr as a direct BDS (transport=raknet), not a relay listener")
-		proto        = flag.Int("proto", 2193, "client protocol (1001|2168|2169|2193)")
+		proto        = flag.Int("proto", 2193, "client protocol (1001|2168|2169|2193|2225)")
 		name         = flag.String("name", "ClientClone", "display name (<= 16 chars, no leading digit)")
 		script       = flag.String("script", "", "file containing one JSON command per line (default: stdin)")
 		jsonPath     = flag.String("json", "", "write the final JSON report to this path")

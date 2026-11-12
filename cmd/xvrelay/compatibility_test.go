@@ -81,7 +81,7 @@ func TestLegacyChunkPreservesWorldData(t *testing.T) {
 	if len(converted) != 1 {
 		t.Fatalf("converted count=%d", len(converted))
 	}
-	got := converted[0].(*packet.LevelChunk)
+	got := unwrapWirePacket(converted[0]).(*packet.LevelChunk)
 	if !bytes.Equal(got.RawPayload, chunk.RawPayload) {
 		t.Errorf("lost terrain payload: got %d bytes, want %d", len(got.RawPayload), len(chunk.RawPayload))
 	}
@@ -95,10 +95,12 @@ func TestLegacyChunkPreservesWorldData(t *testing.T) {
 		t.Error("conversion mutated source")
 	}
 	// The native envelope is independently specified: varints 0,0,0,0;
-	// optional=true, zigzag(9)=18, cache=false, hashes=0, payload length=34.
+	// optional=true, zigzag(9)=18, cache=false, hashes=0, payload length=34;
+	// then the payload and the 2225 ClientBiomeUpdate flag (false).
 	var wire bytes.Buffer
 	got.Marshal(minecraft.DefaultProtocol.NewWriter(&wire, 0))
 	want := append([]byte{0, 0, 0, 0, 1, 18, 0, 0, 34}, chunk.RawPayload...)
+	want = append(want, 0) // protocol 2225 LevelChunk.ClientBiomeUpdate
 	if !bytes.Equal(wire.Bytes(), want) {
 		t.Error("native wire differs from independently specified envelope")
 	}
@@ -119,7 +121,7 @@ func TestShellPayloadEmptyForCrossVersion(t *testing.T) {
 		SubChunkLimit: protocol.Option(int32(9)),
 		RawPayload:    []byte{1, 2, 3, 4},
 	}
-	got := client.Proto().ConvertFromLatest(chunk, client)[0].(*packet.LevelChunk)
+	got := unwrapWirePacket(client.Proto().ConvertFromLatest(chunk, client)[0]).(*packet.LevelChunk)
 	if len(got.RawPayload) != 0 {
 		t.Errorf("payload must be empty for a cross-version client, got %d bytes", len(got.RawPayload))
 	}
@@ -140,7 +142,7 @@ func TestNativeChunkPreservesCacheAndPayload(t *testing.T) {
 	defer sessions.Delete(client)
 	for _, limit := range []int32{-1, 0, 9} {
 		chunk := &packet.LevelChunk{SubChunkCount: ^uint32(0) - 1, SubChunkLimit: protocol.Option(limit), CacheEnabled: true, BlobHashes: []uint64{123}, RawPayload: []byte{0, 10}}
-		got := client.Proto().ConvertFromLatest(chunk, client)[0].(*packet.LevelChunk)
+		got := unwrapWirePacket(client.Proto().ConvertFromLatest(chunk, client)[0]).(*packet.LevelChunk)
 		if !got.CacheEnabled || !reflect.DeepEqual(got.BlobHashes, chunk.BlobHashes) || !bytes.Equal(got.RawPayload, chunk.RawPayload) {
 			t.Errorf("cache/inline data lost for limit %d", limit)
 		}
@@ -155,8 +157,8 @@ func TestInlineNativeChunkUnchanged(t *testing.T) {
 	sessions.Store(client, &session{hostProto: 2193, capture: &spawnCapture{}})
 	defer sessions.Delete(client)
 	chunk := &packet.LevelChunk{SubChunkCount: 2, RawPayload: []byte{1, 2, 3}}
-	got := client.Proto().ConvertFromLatest(chunk, client)[0]
-	if got != chunk {
+	got := unwrapWirePacket(client.Proto().ConvertFromLatest(chunk, client)[0]).(*packet.LevelChunk)
+	if !reflect.DeepEqual(got, chunk) {
 		t.Fatal("same-wire inline chunk changed")
 	}
 }
@@ -356,14 +358,14 @@ func TestDimensionAutoPreservesVanillaHost(t *testing.T) {
 // spent the whole dialTimeout (the host really is not answering), so retrying would only hang.
 func TestIsTransientDialErr(t *testing.T) {
 	cases := map[string]bool{
-		"decode batch: empty packet":                              true,
-		"signal offer: no address known for network ID 12345":     true,
-		"nethernet: no address known for network ID 12345":        true,
-		"dial: connect: connection refused":                       true,
-		"read: connection reset by peer":                          true,
-		"decompress batch: unexpected compression algorithm":      true,
-		"dial minecraft …: context deadline exceeded":             false,
-		"cannot dial the host with any protocol [2193]: …":            false,
+		"decode batch: empty packet":                          true,
+		"signal offer: no address known for network ID 12345": true,
+		"nethernet: no address known for network ID 12345":    true,
+		"dial: connect: connection refused":                   true,
+		"read: connection reset by peer":                      true,
+		"decompress batch: unexpected compression algorithm":  true,
+		"dial minecraft …: context deadline exceeded":         false,
+		"cannot dial the host with any protocol [2193]: …":    false,
 	}
 	for msg, want := range cases {
 		if got := isTransientDialErr(errors.New(msg)); got != want {

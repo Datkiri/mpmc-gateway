@@ -132,6 +132,14 @@ type ListenConfig struct {
 
 // Listen listens on the local network ID specified by the Signaling implementation. It returns a Listener
 // that may be used to accept established connections from [Listener.Accept]. Signaling will be used to notify
+// incoming Signals from remote connections. It is equivalent to calling ListenConfig{}.Listen.
+func Listen(signaling Signaling) (*Listener, error) {
+	var c ListenConfig
+	return c.Listen(signaling)
+}
+
+// Listen listens on the local network ID specified by the Signaling implementation. It returns a Listener
+// that may be used to accept established connections from [Listener.Accept]. Signaling will be used to notify
 // incoming Signals from remote connections.
 func (conf ListenConfig) Listen(signaling Signaling) (*Listener, error) {
 	if conf.Log == nil {
@@ -154,7 +162,7 @@ func (conf ListenConfig) Listen(signaling Signaling) (*Listener, error) {
 			conf.Log.Debug("newly generated a private key for this listener", "fingerprint", ssh.FingerprintSHA256(pub))
 		}
 		conf.IssueServerIdentity = func(ctx context.Context) (*Identity, error) {
-			return GenerateServerIdentity(privateKey, "self")
+			return ServerIdentity(privateKey, "self")
 		}
 	}
 	if conf.VerifyClientToken == nil {
@@ -693,11 +701,7 @@ func (n *listenerNegotiator) startTransports(ctx context.Context, conn *Conn, d 
 	}
 
 	conn.log.Debug("starting SCTP transport")
-	if err := withContextCancel(ctx, func() error {
-		return conn.sctp.Start(d.sctp)
-	}, func() {
-		_ = conn.sctp.Stop()
-	}); err != nil {
+	if err := conn.sctp.StartContext(ctx, d.sctp); err != nil {
 		return fmt.Errorf("start SCTP: %w", err)
 	}
 	conn.maxSegmentPayload.Store(conn.sctp.GetCapabilities().MaxMessageSize - 1)
@@ -736,7 +740,15 @@ func (l *Listener) Accept() (net.Conn, error) {
 }
 
 // Addr returns an Addr that represents the local network ID of the Listener.
+// If the Signaling implements an Addr() method, it will return that value instead.
 func (l *Listener) Addr() net.Addr {
+	if a, ok := l.signaling.(interface {
+		Addr() net.Addr
+	}); ok {
+		if addr := a.Addr(); addr != nil {
+			return addr
+		}
+	}
 	return &Addr{NetworkID: l.networkID}
 }
 
@@ -825,7 +837,7 @@ func (l *Listener) NotifySignal(signal *Signal) bool {
 		n, ok := l.negotiations[key]
 		if !ok {
 			if signal.Type != SignalTypeOffer {
-				l.conf.Log.Error("received non-offer signal for a non-existing negotiation", "signal", signal.String(), "networkID", signal.NetworkID)
+				l.conf.Log.Debug("received non-offer signal for a non-existing negotiation", "signal", signal.String(), "networkID", signal.NetworkID)
 				l.negotiationsMu.Unlock()
 				return false
 			}
@@ -861,26 +873,6 @@ func (l *Listener) monitorSignaling() {
 	case <-l.signaling.Context().Done():
 		l.conf.Log.Warn("signaling context canceled", slog.Any("error", context.Cause(l.signaling.Context())))
 		_ = l.Close()
-	}
-}
-
-// withContextCancel calls f in a goroutine and returns early when ctx is done.
-// If cancel is non-nil, it is called when ctx is done to help unblock f.
-func withContextCancel(ctx context.Context, f func() error, cancel func()) error {
-	errCh := make(chan error, 1)
-	go func() {
-		errCh <- f()
-	}()
-	select {
-	case <-ctx.Done():
-		if cancel != nil {
-			cancel()
-		}
-		// Ensure the goroutine can complete without blocking even if it returns later.
-		go func() { <-errCh }()
-		return ctx.Err()
-	case err := <-errCh:
-		return err
 	}
 }
 

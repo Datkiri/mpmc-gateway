@@ -17,15 +17,31 @@ func quietLogger(string, ...any) {}
 // derived from the pinned registries, so a change here means either the data
 // changed or the codec stopped translating — both need an explicit review.
 func TestAuditAllProtocols(t *testing.T) {
+	// The native registry is protocol 2225 (1.26.60). It is the source of every
+	// translated packet, so its size is the upper bound the audits compare to.
+	const wantNative = 2080
+	native, err := blocktranslate.NativeItems()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(native) != wantNative {
+		t.Fatalf("native registry has %d items, want %d (did the 2225 data change?)", len(native), wantNative)
+	}
+
+	// The 2225 registry adds 4 items over 2193 (disc_press, ice_crystal,
+	// icicle, frostbite_spawn_egg). Every older target lacks those names, so
+	// each protocol's lost/fallback count grows by exactly 4 compared with the
+	// old 2193-native baseline: 143->147, 100->104, 0->4.
 	want := map[int32]struct {
 		lost, visible   int
 		crossCheck      string
 		mapperFallbacks int
 	}{
-		1001: {143, 1933, "OK", 143},
-		2168: {100, 1976, "not available", 0},
-		2169: {100, 1976, "OK", 100},
-		2193: {0, 2076, "not applicable", 0},
+		1001: {147, 1933, "OK", 147},
+		2168: {104, 1976, "not available", 0},
+		2169: {104, 1976, "OK", 104},
+		2193: {4, 2076, "not available", 0},
+		2225: {0, 2080, "not applicable", 0},
 	}
 
 	for _, id := range allProtocols {
@@ -38,8 +54,8 @@ func TestAuditAllProtocols(t *testing.T) {
 			if r.PacketDropped {
 				t.Fatal("InventoryContent was dropped")
 			}
-			if r.Sent != r.NativeItems || r.Sent != 2076 {
-				t.Fatalf("sent=%d native=%d, want 2076", r.Sent, r.NativeItems)
+			if r.Sent != r.NativeItems || r.Sent != wantNative {
+				t.Fatalf("sent=%d native=%d, want %d", r.Sent, r.NativeItems, wantNative)
 			}
 			if r.Visible+r.Lost != r.Sent {
 				t.Errorf("visible=%d lost=%d sent=%d: items unaccounted for", r.Visible, r.Lost, r.Sent)
@@ -68,9 +84,10 @@ func TestAuditAllProtocols(t *testing.T) {
 			}
 
 			// Registry-aware codecs hide unknown IDs as AIR; the identity codec
-			// keeps them (they are still inside the int16 wire range).
+			// (the native protocol, 2225) keeps them (they are still inside the
+			// int16 wire range).
 			for i, p := range r.UnknownProbes {
-				wantAir := id != 2193
+				wantAir := id != blocktranslate.NativeProtocol
 				if p.BecameAir != wantAir {
 					t.Errorf("unknown probe %d: became_air=%v, want %v (observed=%d)",
 						i, p.BecameAir, wantAir, p.ObservedNetworkID)
@@ -79,8 +96,8 @@ func TestAuditAllProtocols(t *testing.T) {
 			if r.RangeProbe == nil {
 				t.Fatal("range probe missing")
 			}
-			if r.RangeProbe.Truncated != (id == 2193) {
-				t.Errorf("range probe truncated=%v, want %v", r.RangeProbe.Truncated, id == 2193)
+			if r.RangeProbe.Truncated != (id == blocktranslate.NativeProtocol) {
+				t.Errorf("range probe truncated=%v, want %v", r.RangeProbe.Truncated, id == blocktranslate.NativeProtocol)
 			}
 		})
 	}
@@ -136,6 +153,8 @@ func protocolName(id int32) string {
 		return "2169"
 	case 2193:
 		return "2193"
+	case 2225:
+		return "2225"
 	}
 	return "unknown"
 }

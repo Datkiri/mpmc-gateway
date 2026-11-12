@@ -11,6 +11,7 @@ import (
 	"math"
 	"math/rand/v2"
 	"net"
+	"net/netip"
 	"slices"
 	"strconv"
 	"strings"
@@ -704,6 +705,58 @@ type description struct {
 	candidates []webrtc.ICECandidate
 }
 
+// defaultCandidate returns the ICE candidate to be used as the connection address for the media section in SDP.
+// It returns a zero candidate with false when trickle ICE is enabled or none of the candidates are suitable.
+// See https://webrtc.googlesource.com/src/+/refs/heads/main/api/jsep.cc#43.
+func (desc description) defaultCandidate() (candidate webrtc.ICECandidate, _ bool) {
+	if len(desc.candidates) == 0 {
+		return candidate, false
+	}
+	var (
+		currentFamily     uint8
+		currentPreference uint16
+		selected          bool
+	)
+	for _, c := range desc.candidates {
+		if c.Protocol != webrtc.ICEProtocolUDP || c.Component != uint16(webrtc.ICEComponentRTP) {
+			continue
+		}
+		var family uint8
+		if ip, err := netip.ParseAddr(c.Address); err == nil {
+			if ip.Is4() {
+				family = 4
+			} else {
+				family = 6
+			}
+		}
+		pref := typePreference(c)
+		if (pref <= currentPreference && currentFamily == family) ||
+			(currentFamily == 4 && family == 6) {
+			// Do not use a candidate with a lower or equal preference from the same address family,
+			// or an IPv6 candidate when the current candidate is IPv4.
+			continue
+		}
+		candidate, currentFamily, currentPreference, selected = c, family, pref, true
+	}
+	return candidate, selected
+}
+
+// typePreference returns libwebrtc's default-candidate preference for the given [webrtc.ICECandidate].
+// This preference ranks likely reachability and is distinct from the candidate's ICE priority.
+// See https://webrtc.googlesource.com/src/+/refs/heads/main/api/candidate.h#141.
+func typePreference(candidate webrtc.ICECandidate) uint16 {
+	switch candidate.Typ {
+	case webrtc.ICECandidateTypeHost:
+		return 1
+	case webrtc.ICECandidateTypeSrflx:
+		return 2
+	case webrtc.ICECandidateTypeRelay:
+		return 3
+	default:
+		return 0
+	}
+}
+
 // encode transforms the description into a [sdp.SessionDescription] and encodes them using the [sdp.SessionDescription.Marshal]
 // method. It is called by a negotiator (Listener or Dialer) to signal an offer or answer to the remote connection with the local
 // parameters of each transport within a Conn.
@@ -750,6 +803,18 @@ func (desc description) encode() ([]byte, error) {
 				Address: "0.0.0.0",
 			},
 		},
+	}
+
+	// Use the default candidate's address as the connection address for
+	// the media description whenever possible.
+	if candidate, ok := desc.defaultCandidate(); ok {
+		if ip, err := netip.ParseAddr(candidate.Address); err == nil {
+			if ip.Is6() {
+				media.ConnectionInformation.AddressType = "IP6"
+			}
+			media.MediaName.Port = sdp.RangedPort{Value: int(candidate.Port)}
+			media.ConnectionInformation.Address = &sdp.Address{Address: candidate.Address}
+		}
 	}
 
 	// When Trickle ICE is disabled, local ICE candidates are embedded directly in
@@ -823,6 +888,9 @@ func newConn(api *webrtc.API, gathererOpts webrtc.ICEGatherOptions, id uint64, n
 	}
 	if len(dtlsParams.Fingerprints) == 0 {
 		return nil, wrapSignalError(errors.New("local DTLS parameters has no fingerprints"), localDescriptionErrorCode)
+	}
+	for i, fingerprint := range dtlsParams.Fingerprints {
+		dtlsParams.Fingerprints[i].Value = strings.ToUpper(fingerprint.Value)
 	}
 	sctpCapabilities := sctpTransport.GetCapabilities()
 

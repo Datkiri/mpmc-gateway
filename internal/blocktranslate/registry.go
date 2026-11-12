@@ -11,8 +11,13 @@ import (
 
 	"github.com/sandertv/gophertunnel/minecraft/nbt"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
+	v2225 "github.com/shawtymarco/go-multiversion/data/v2225"
 	"github.com/shawtymarco/go-multiversion/mapping"
 )
+
+// NativeProtocol is the protocol whose palette is the translation source/target
+// (the codec's "latest"). 2225 = 1.26.60.
+const NativeProtocol int32 = 2225
 
 //go:embed data/*.nbt data/items-2193.json
 var palettes embed.FS
@@ -99,6 +104,46 @@ func loadRegistry(id int32) (*registry, error) {
 	return r, nil
 }
 
+// loadRegistry2225 builds the native 2225 palette from the go-multiversion
+// snapshot. Unlike the embedded NBT palettes it carries no network_id: 2225
+// uses hashed wire IDs, so the dense slice index is only an internal
+// enumeration and the hash is computed with StateHash.
+func loadRegistry2225() (*registry, error) {
+	states, err := v2225.BlockStates()
+	if err != nil {
+		return nil, fmt.Errorf("protocol 2225 block states: %w", err)
+	}
+	if len(states) == 0 {
+		return nil, fmt.Errorf("protocol 2225 palette is empty")
+	}
+	r := &registry{byHash: map[uint32]uint32{}, byKey: map[string]uint32{}}
+	for i, s := range states {
+		state := mapping.BlockState{Name: s.Name, Properties: s.Properties, Version: s.Version}
+		key, err := mapping.StateKey(s.Name, s.Properties)
+		if err != nil {
+			return nil, err
+		}
+		hash, err := StateHash(s.Name, s.Properties)
+		if err != nil {
+			return nil, err
+		}
+		if previous, exists := r.byHash[hash]; exists {
+			return nil, fmt.Errorf("palette2225 hash collision at %d and %d", previous, i)
+		}
+		if _, exists := r.byKey[key]; exists {
+			return nil, fmt.Errorf("palette2225 duplicate state %s", s.Name)
+		}
+		r.states = append(r.states, state)
+		r.hashes = append(r.hashes, hash)
+		r.byHash[hash] = uint32(i)
+		r.byKey[key] = uint32(i)
+		if s.Name == "minecraft:air" {
+			r.air = uint32(i)
+		}
+	}
+	return r, nil
+}
+
 func initCatalog() {
 	catalog.registries = map[int32]*registry{}
 	catalog.mappers = map[int32]*mapping.BlockMapper{}
@@ -110,13 +155,19 @@ func initCatalog() {
 		}
 		catalog.registries[id] = r
 	}
+	native, err := loadRegistry2225()
+	if err != nil {
+		catalog.err = err
+		return
+	}
+	catalog.registries[NativeProtocol] = native
 	// These protocol families share the 1.26.40–45 block schema, as in the
 	// pinned v1_26_44 adapter. Keep the snapshot provenance explicit.
 	catalog.registries[2169] = catalog.registries[2168]
-	for _, id := range []int32{1001, 2168} {
-		m, err := mapping.NewBlockMapperWithTargetOrder(catalog.registries[2193], catalog.registries[id].states)
+	for _, id := range []int32{1001, 2168, 2193} {
+		m, err := mapping.NewBlockMapperWithTargetOrder(catalog.registries[NativeProtocol], catalog.registries[id].states)
 		if err != nil {
-			catalog.err = fmt.Errorf("registry%d to2193: %w", id, err)
+			catalog.err = fmt.Errorf("registry%d to%d: %w", id, NativeProtocol, err)
 			return
 		}
 		catalog.mappers[id] = m
@@ -201,7 +252,7 @@ func New(source, target int32, hashed bool, custom []protocol.BlockEntry) (*Mapp
 	}
 	for i := range src.states {
 		canonical := uint32(i)
-		if source != 2193 {
+		if source != NativeProtocol {
 			var ok bool
 			canonical, ok = catalog.mappers[source].TargetToNative(uint32(i))
 			if !ok {
@@ -209,7 +260,7 @@ func New(source, target int32, hashed bool, custom []protocol.BlockEntry) (*Mapp
 			}
 		}
 		out, exact := canonical, true
-		if target != 2193 {
+		if target != NativeProtocol {
 			var valid bool
 			out, valid, exact = catalog.mappers[target].MapNative(canonical)
 			if !valid {

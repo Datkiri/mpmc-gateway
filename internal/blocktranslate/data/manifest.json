@@ -2,21 +2,33 @@
   "source": "https://github.com/CloudburstMC/Data",
   "license": "Apache-2.0 (LICENSE.Cloudburst)",
   "format": "gzip, big-endian NBT compound blocks list; network_id verified against computed FNV-1a typed state hash",
+  "nativeProtocol": {
+    "protocol": 2225,
+    "gameVersion": "1.26.60",
+    "source": "github.com/shawtymarco/go-multiversion data/v2225 (NOT an embedded copy in this directory)",
+    "sourceRepository": "https://github.com/df-mc/dragonfly",
+    "sourceCommit": "d86aefd9ff9b6a357d6dfadab2093af811545256",
+    "dependency": "github.com/shawtymarco/go-multiversion v0.0.0-20261107121328-f4ba8291d1bd",
+    "blockStates": {"file": "block_states.nbt", "states": 23960, "sha256": "88b8c903ac75d46247bed5ff785c0c050068d28440190f7412d697b045d2d51f"},
+    "items": {"file": "vanilla_items.nbt", "entries": 2080, "sha256": "b3a2e88d38525e494a1a3658cec2f02bd03c74975ed67cedad518beceeadef8f"},
+    "note": "2225 uses HASHED wire block IDs: the dense order of block_states.nbt is NOT the network ID. loadRegistry2225() computes StateHash(name, properties) and rejects collisions; translation uses canonical indices. No network_id pin exists or is possible for this snapshot."
+  },
   "snapshots": [
     {"file":"1001.nbt","protocol":1001,"commit":"4634cd1725b4fb765c1c4431ae16a0bca77f93d0","states":16913,"sha256":"73ef6dadfa16dd52319493c8112ecb13a020989cf04452f76ff4a8a250a29fea"},
     {"file":"2168.nbt","protocol":2168,"commit":"619483eb88140f46b8933506c6263861c0d8fa43","states":17499,"sha256":"26826e766aa0916d757706adbbb53da0f548308a14ab0ff389db9dec9b297aca"},
     {"file":"2193.nbt","protocol":2193,"commit":"a8a4341d7763d6eb8547cff3ca46b4153d60163d","states":22091,"sha256":"54c9bed0bef30aadc316b21c6e82b5ac407c5c6e351b9d9690aa4e9a49fec912"}
   ],
   "itemRegistries": {
-    "source": "2193 = CloudburstMC/Data runtime_item_states.json (items-2193.json); 1001/2169 = the go-multiversion data/v1001 and data/v2169 vanilla_items.nbt dragonfly snapshots, resolved at init through mapping.NewItemMapper(native, target).TargetEntries(). These are not independent pinned copies: they are the same snapshots the protocol adapters use.",
-    "dependency": "github.com/shawtymarco/go-multiversion v0.0.0-20260927132311-7d7f3d51d090 (pinned by go.sum)",
+    "source": "2225 (native) = go-multiversion data/v2225 vanilla_items.nbt; 1001/2169/2193 = the go-multiversion data/v* vanilla_items.nbt dragonfly snapshots, resolved at init through mapping.NewItemMapper(native, target).TargetEntries(). These are not independent pinned copies: they are the same snapshots the protocol adapters use.",
+    "dependency": "github.com/shawtymarco/go-multiversion v0.0.0-20261107121328-f4ba8291d1bd (pinned by go.sum)",
     "entries": [
       {"protocol":1001,"items":1933,"sourceCommit":"df-mc/dragonfly 705b8460b472508023e72f399c76f524a875fed7","vanillaItemsSha256":"0ad3c87f3cc76ad97d4742a24d77ceaf1f8652ed35db2b50937c2f95ff924dec"},
       {"protocol":2168,"items":1976,"sharedWith":2169,"reason":"protocols/v1_26_44.NewWithRegistries delegates to v1_26_45.NewWithRegistries (shared 1.26.40-1.26.45 registry baseline); no data/v2168 package exists"},
       {"protocol":2169,"items":1976,"sourceCommit":"shawtymarco/dragonfly dc54cf36e662411a770a9f0e91c1825cc310eb0a","vanillaItemsSha256":"a06a37780c30d10f170f544517ca1bd2ad40a6bce31b22fa126ad633248f5118"},
-      {"protocol":2193,"items":2076,"sourceCommit":"CloudburstMC/Data a8a4341d7763d6eb8547cff3ca46b4153d60163d"}
+      {"protocol":2193,"items":2076,"sourceCommit":"CloudburstMC/Data a8a4341d7763d6eb8547cff3ca46b4153d60163d"},
+      {"protocol":2225,"items":2080,"native":true,"sourceCommit":"df-mc/dragonfly d86aefd9ff9b6a357d6dfadab2093af811545256","vanillaItemsSha256":"b3a2e88d38525e494a1a3658cec2f02bd03c74975ed67cedad518beceeadef8f"}
     ],
-    "verification": "TestItemRegistryMatchesCodec feeds the native 2193 table into each registry-aware codec and asserts the emitted name/ID mapping equals Items(id). TestClientItemRegistryWiring asserts the caller's native-vs-own-table rule, including that a non-native input is dropped by the 1001 codec."
+    "verification": "TestNative2225RegistryPinsData pins the native 2225 palette (23960 states, hashed, air=18894) and item counts for all five protocols. TestItemRegistryMatchesCodec feeds the native 2225 table into each registry-aware codec and asserts the emitted name/ID mapping equals Items(id). TestClientItemRegistryWiring asserts the caller's native-vs-own-table rule, including that a non-native input is dropped by the 1001 codec. cmd/itemaudit measures the 4 items added in 2225 (disc_press, ice_crystal, icicle, frostbite_spawn_egg) that every older target lacks."
   },
   "protocol2169": "Shares2168 block schema; test verifies full typed StateKey set equals pinned go-multiversion/data/v2169. Does not use2168 wire codec for2169.",
   "compatibility": "Matches protocol families, not a promise for arbitrary previews or future builds sharing an ID. Custom runtime-ID ordering is rejected; custom state hashing only supports explicit typed state properties."

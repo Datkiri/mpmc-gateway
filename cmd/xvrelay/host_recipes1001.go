@@ -116,7 +116,7 @@ type creative1001Stats struct{ mapped, dropped, unknown int }
 // because NativeToTarget fails on a non-native ID. Resolution is by NAME via
 // the host's ItemRegistry, exactly like decodeHostRecipes1001 does for recipes.
 func mapHostCreative1001(current *packet.CreativeContent, entries []protocol.ItemEntry) (*packet.CreativeContent, creative1001Stats, error) {
-	native, err := blocktranslate.Items(2193)
+	native, err := blocktranslate.NativeItems()
 	if err != nil {
 		return nil, creative1001Stats{}, err
 	}
@@ -339,7 +339,7 @@ func decodeHostRecipes1001(raw []byte, entries []protocol.ItemEntry, shieldID in
 		}
 	}()
 	buf := bytes.NewBuffer(raw)
-	native, nativeErr := blocktranslate.Items(2193)
+	native, nativeErr := blocktranslate.NativeItems()
 	if nativeErr != nil {
 		return nil, nativeErr
 	}

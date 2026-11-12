@@ -37,7 +37,31 @@ func TestMapHostCreative1001UsesNativeIDs(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := []int32{854, 398, 689, 690, 692, 0}
+	// The expected IDs come from the NATIVE table (2225), not a pinned 2193 snapshot: the
+	// relay resolves host IDs by name through blocktranslate.NativeItems().
+	natives, err := blocktranslate.NativeItems()
+	if err != nil {
+		t.Fatal(err)
+	}
+	nativeID := make(map[string]int32, len(natives))
+	for _, e := range natives {
+		nativeID[e.Name] = int32(e.RuntimeID)
+	}
+	wantNames := []string{
+		"minecraft:copper_spear", "minecraft:black_dye", "minecraft:prize_pottery_sherd",
+		"minecraft:scrape_pottery_sherd", "minecraft:shelter_pottery_sherd", "",
+	}
+	want := make([]int32, len(wantNames))
+	for i, name := range wantNames {
+		if name == "" {
+			continue
+		}
+		id, ok := nativeID[name]
+		if !ok {
+			t.Fatalf("%s missing from the native 2225 item table", name)
+		}
+		want[i] = id
+	}
 	if len(out.Items) != len(want) {
 		t.Fatalf("got %d creative items, want %d (one unresolvable ID must be dropped)", len(out.Items), len(want))
 	}
@@ -49,8 +73,8 @@ func TestMapHostCreative1001UsesNativeIDs(t *testing.T) {
 			t.Errorf("item %d still carries the host ID", i)
 		}
 	}
-	if out.Groups[0].Icon.NetworkID != 689 {
-		t.Errorf("group icon native id=%d, want 689", out.Groups[0].Icon.NetworkID)
+	if wantIcon := nativeID["minecraft:prize_pottery_sherd"]; out.Groups[0].Icon.NetworkID != wantIcon {
+		t.Errorf("group icon native id=%d, want %d", out.Groups[0].Icon.NetworkID, wantIcon)
 	}
 	if st.mapped != 6 || st.dropped != 0 || st.unknown != 1 {
 		t.Errorf("stats=%+v, want mapped=6 dropped=0 unknown=1", st)

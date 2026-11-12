@@ -1,8 +1,8 @@
 package main
 
 import (
-	"bytes"
 	"bedrock-cross-version-relay/internal/blocktranslate"
+	"bytes"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 	data1001 "github.com/shawtymarco/go-multiversion/data/v1001"
@@ -15,7 +15,7 @@ func TestHostRecipeOutputsUseNativeItemRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	native, err := blocktranslate.Items(2193)
+	native, err := blocktranslate.NativeItems()
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -57,7 +57,7 @@ func TestHostBrewingAndReducerUseNativeItemRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	native, err := blocktranslate.Items(2193)
+	native, err := blocktranslate.NativeItems()
 	if err != nil {
 		t.Fatal(err)
 	}

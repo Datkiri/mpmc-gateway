@@ -4,8 +4,9 @@
 
 <sub>Maintained by **ILwHee** · MIT · contributions welcome · binary name: `xvrelay`</sub>
 
-Let a **1.26.51 client join a 1.26.33 host**, and let a **1.26.33 client join a 1.26.51 host** —
+Let a **1.26.60 client join a 1.26.33 host**, and let a **1.26.33 client join a 1.26.60 host** —
 without patching the game, without a modified APK, and without everyone installing the same version.
+(Five protocol families are supported; the original 1.26.51 ↔ 1.26.33 case is still covered.)
 
 It works as a small Go proxy: the client connects to the relay using its own protocol, the relay
 talks to the LAN world using the host's protocol, and packets are re-encoded and block palettes are
@@ -19,7 +20,7 @@ re-mapped in both directions.
 
 Keywords: `minecraft bedrock` · `cross-version` · `crossplay` · `protocol translation` · `protocol translator` ·
 `LAN relay` · `NetherNet` · `RakNet` · `gophertunnel` · `block palette` · `palette remap` ·
-`protocol 2193` / `2169` / `2168` / `1001` · `1.26.51` · `1.26.45` · `1.26.33` · `proxy` · `Go`
+`protocol 2225` / `2193` / `2169` / `2168` / `1001` · `1.26.60` · `1.26.51` · `1.26.45` · `1.26.33` · `proxy` · `Go`
 
 ---
 
@@ -38,7 +39,7 @@ This project is an experiment in doing exactly that, out in the open:
 - translate **block palettes** in `SubChunk` (v8/v9), inline `LevelChunk`, `UpdateBlock`,
   `UpdateBlockSynced`, `UpdateSubChunkBlocks`, and the reverse direction for clicked/broken blocks;
 - translate the **item registry** so inventories survive the hop — a table is pinned for each of
-  `1001`, `2168`, `2169` and `2193`; see [Block and item translation](#block-and-item-translation);
+  `1001`, `2168`, `2169`, `2193` and native `2225`; see [Block and item translation](#block-and-item-translation);
 - keep everything else as close to "just forward the bytes" as possible, so behaviour stays
   predictable and failures are visible in the log instead of silently corrupting the world.
 
@@ -51,17 +52,144 @@ Protocol IDs, not marketing versions — a build can share a protocol ID and sti
 | `1001` | 1.26.30 – 1.26.36 | client and host |
 | `2168` | 1.26.40 – 1.26.44 | client and host |
 | `2169` | 1.26.45 | client and host |
-| `2193` | 1.26.50 – 1.26.52 | client and host (native) |
+| `2193` | 1.26.50 – 1.26.52 | client and host |
+| `2225` | 1.26.60 | client and host (**native**) |
 
 `1.26.52` shares protocol `2193` with `1.26.50`/`1.26.51`, but the *version string* is not
 interchangeable: a Bedrock client refuses a server whose `GameVersion` is older than its own
 (measured: a 1.26.52 client handed `1.26.50` crashes itself after ~0.3 s), so the relay overrides
 `StartGame.GameVersion` with the client's real string.
 
-Any client protocol can be paired with any host protocol — 16 combinations. Protocol detection is
+Any client protocol can be paired with any host protocol — 25 combinations. Protocol detection is
 automatic by default: the relay reads the host's protocol from LAN discovery (`ServerData` v5/v6/v7),
 and if the host broadcasts a format without a `Protocol` field it probes the host with
-`2193 → 2169 → 1001 → 2168` (a wrong-protocol login is rejected almost immediately, so the probe is cheap).
+`2225 → 2193 → 2169 → 1001 → 2168` (a wrong-protocol login is rejected almost immediately, so the probe is cheap).
+
+See [1.26.60 / protocol 2225](#1260--protocol-2225) for what "native" means after the upgrade: the
+engine still translates the four older families, but its internal palette/item tables now come from
+the 2225 snapshot and the `2193` wire is produced by a frozen `v1_26_50` adapter.
+
+## 1.26.60 / protocol 2225
+
+Added 2026-11-10. **Everything elsewhere in this README that quotes a number, or refers to
+"native 2193", describes the 2193-native build measured on 2026-11-05** unless the section was
+updated for 2225. Those historical results are kept as-is rather than silently rewritten — in
+particular the live-session, benchmark and packet-coverage tables further down. Current code uses
+2225 as native. The 2225 work was initially verified offline; a **live BDS 1.26.60.6 session was
+run on 2026-11-10** and is recorded in [Live 1.26.60 session](#live-1260-session-2026-11-10)
+below. Rendering by a real game client, resource packs and LAN discovery against a 1.26.60 host
+remain outside that session's scope.
+
+What changed:
+
+| Layer | Before | Now |
+| --- | --- | --- |
+| gophertunnel | vendored `third_party/gophertunnel-2193`, `v1.63.0` | `third_party/gophertunnel-2225`, `v1.63.1-0.20261030102901-0e179fc4bb08` (`CurrentProtocol = 2225`, `CurrentVersion = "1.26.60"`); the five local patches (deferredReady + registry-based shieldID seeding in `conn.go`, packet ID in error strings, `ItemType` reader, `SubChunk.Result`, prerelease manifest parsing) were ported over |
+| go-multiversion | `v0.0.0-20260927132311` (adapters ≤ `v1_26_45`) | `v0.0.0-20261107121328-f4ba8291d1bd` — adds `protocols/v1_26_50`, `data/v2225`, `data/native2225` |
+| go-nethernet | `v1.0.23` | `v1.0.26` (needed for `nethernet.SelfSignedIdentity`, now on the dial path) |
+| Native registry | `2193` (22091 states, 2076 items) | `2225` (**23960 states, 2080 items**, `air=18894`) |
+| `2193` codec | native / identity | `v1_26_50.NewWithRegistries(native2225, items2225)` — a real adapter |
+| `2225` codec | — | `minecraft.DefaultProtocol` (identity) |
+
+Two upstream behaviours needed explicit handling:
+
+1. **Hashed palette.** 2225 block IDs on the wire are `StateHash(name, properties)`, so the dense
+   order of `v2225.BlockStates()` is *not* the network ID (measured: **23960/23960** indices differ
+   from their hash). `loadRegistry2225()` keeps an explicit `hashes[]` and `byHash` map;
+   translation goes through canonical indices. `TestNative2225RegistryPinsData` pins this.
+2. **Every adapter packet is wrapped.** The new `v1_26_50` adapter returns
+   `*v1_26_50.wirePacket`, so code that type-asserted `*packet.StartGame` after
+   `ConvertFromLatest` stopped matching — including the `v1_26_44` adapter's own `StartGame`
+   version patch. `unwrapWirePacket()` (plus a post-conversion `GameVersion` override on both the
+   raw-forward and normal paths) restores the client's real version string. Tests now decode
+   frozen-2193 fixtures through `codec.Packets(false)[IDStartGame]()`, not a plain `StartGame`.
+
+Three regressions found and fixed while making the suite green:
+
+- `TestNetherNetIngressLoopback` timed out: `DialContextNetwork` in 2225 prefers the
+  `identityDialer` interface, so the test's `fixedIDNetherNet.DialContext` shim was bypassed and
+  the signaling backend was asked to parse `"127.0.0.1:19132"` as a network ID. The shim now also
+  overrides `DialContextIdentity`; the loopback passes in **0.63 s**.
+- `StartGame.GameVersion` reverted to `1.26.45` on the 2168 path (see above) — fixed by the
+  post-conversion override.
+- `-client-proto auto` listed `1001,2168,2169` plus the mandatory native codec. With native now
+  2225, **1.26.50–52 clients (2193) were rejected by default**. `auto` is now
+  `1001,2168,2169,2193,2225`, and `hostProtoProbeOrder` starts with `2225`;
+  `TestAutoClientProtocolsCoverEveryCodec` pins both lists.
+
+Measured with `cmd/itemaudit` on the 2225-native build (wire-level, offline):
+
+| Protocol | native sent | visible | lost as AIR | mapper fallbacks |
+| --- | --- | --- | --- | --- |
+| `1001` | 2080 | 1933 | **147** | 147 |
+| `2168` | 2080 | 1976 | **104** | 0 (not exported) |
+| `2169` | 2080 | 1976 | **104** | 104 |
+| `2193` | 2080 | 2076 | **4** | 0 (not exported) |
+| `2225` | 2080 | 2080 | **0** | 0 |
+
+The +4 delta on every older protocol is exactly the four items added in 2225 —
+`minecraft:disc_press`, `minecraft:ice_crystal`, `minecraft:icicle`,
+`minecraft:frostbite_spawn_egg` — which have no target entry (`NO_TARGET_ENTRY`). `wrong_id=0`
+everywhere. This is expected cross-version behaviour, **not** a regression.
+
+Verification: `go build -buildvcs=false ./...`, `go vet`, and `go test -buildvcs=false ./...`
+are green on all packages (2026-11-10, re-run after the live session: 7/7 packages).
+
+### Live 1.26.60 session (2026-11-10)
+
+BDS **1.26.60.6** (`Build ID 52886189`, `r/26_u6`, Windows ZIP SHA-256
+`21620db4f80d0fe206f21cb08f52f4e5f14252ce865ec49ccfbe0d9f93ce88b0`) was installed at
+`A Client/bds_1.26.60` and configured for the direct-host lab (`transport=raknet`,
+`online-mode=false`, `allow-list=false`). BDS prints a **misleading** banner —
+`"In this release, NetherNet is the only supported transport type"` — but still binds UDP 19132
+and accepts a RakNet dial; every session below connected and spawned.
+
+Relay: `-host-raknet 127.0.0.1:19132 -host-proto 2225 -client-proto auto -listen 127.0.0.1:19164`.
+The listener reported `protocols="[1001 2168 2169 2193 2225]"`, which live-confirms the
+`-client-proto auto` fix. The custom clients are the headless Go clients in this repo
+(`cmd/selfcheck`, `cmd/clientclone`) — no GUI game client was used.
+
+**Host 2225 → all five client protocols** (`selfcheck -soak 4–5s`, all `OK=true`, exit 0):
+
+| Client protocol | Version | LevelChunk | SubChunk | GameData items | registry | spawned |
+| --- | --- | --- | --- | --- | --- | --- |
+| `1001` | 1.26.36 | 929 | 256 | 1933 | true | 0 ms |
+| `2168` | 1.26.44 | 929 | 0 | 1976 | true | 0 ms |
+| `2169` | 1.26.45 | 970 | 0 | 1976 | true | 0 ms |
+| `2193` | 1.26.50 | 721 | 0 | 2076 | true | 0 ms |
+| `2225` | 1.26.60 | 929 | 0 | **2080** | true | 0 ms |
+
+**Live wire item census** (`clientclone` + `cmd/clientclone/scripts/bds-items.jsonl`,
+all `lost=0 unknown=0 decode_errors=0 bad_packets=0 send_errors=0 ok=true`):
+
+| Client protocol | item table | stacks decoded | stacks visible | lost / unknown |
+| --- | --- | --- | --- | --- |
+| `1001` | 1933 | 4298 | 4194 | 0 / 0 |
+| `2193` | 2076 | 4911 | 4807 | 0 / 0 |
+| `2225` | 2080 | 6825 | 6726 | 0 / 0 |
+
+The offline `cmd/itemaudit` prediction of `lost=4` for 2193 and `lost=147` for 1001 counts
+native-2225 items that have **no target entry**. On the live wire those entries are omitted by the
+adapter rather than delivered as AIR, so the client-side census sees zero AIR stacks and zero
+unknown IDs. Neither measurement contradicts the other; they count different things.
+
+**Reverse direction — 1.26.60 as the client.** A second BDS (1.26.33.1, protocol 1001) was run
+on UDP 19142 with `enable-lan-visibility=false`, and a second relay on 19165
+(`-host-raknet 127.0.0.1:19142 -host-proto 1001 -client-proto auto`). A `2225` client spawned
+(921 LevelChunk, `items=2080`, `registry=true`, `OK=true`) and its census decoded 5613 stacks
+(5512 visible) with `lost=0 unknown=0 ok=true`. So 1.26.60 works on **both** sides of the
+version ladder.
+
+Aggregate relay logs: relay #1 **8/8** sessions spawned, relay #2 **2/2**, `level=ERROR` on
+relay #2 = 0. Relay #1 has 2 ERROR lines, both from one dial attempt that BDS rejected because
+the previous RakNet session had not yet been released (`receive minecraft ...: ` empty); the
+retry succeeded. Warnings are benign: missing host packs (BDS has none), the direct-mode
+"world temporarily absent from discovery" notice, and custom blocks dropped for older clients.
+`go build -buildvcs=false ./...`, `go vet`, `go test -buildvcs=false ./... -count=1` all green
+afterwards.
+
+Still **not** verified: a real 1.26.60 game client rendering terrain/inventory, resource packs,
+Xbox-authenticated login, and LAN/NetherNet discovery against a 1.26.60 host.
 
 ## Quick start
 
@@ -128,12 +256,14 @@ go build -buildvcs=false -o dist/selfcheck ./cmd/selfcheck
 ./dist/selfcheck -addr 127.0.0.1:19164 -proto 1001 -interactions -soak 8s -json dist/selfcheck-interactions.json -v
 ```
 
-Useful flags: `-proto` (`1001|2168|2169|2193`), `-reconnect N`, `-soak <duration>`,
+Useful flags: `-proto` (`1001|2168|2169|2193|2225`), `-reconnect N`, `-soak <duration>`,
 `-spawn-timeout`, `-json <path>`, `-v`, `-interactions`. For `-lan-join`: `-lan-addr` (default
 `127.0.0.1:7551`), `-network-id` (skip discovery), `-lan-timeout`. `-lan-join` requires the
 relay to run with `-listen-nethernet`; `-addr` is ignored. It exits non-zero when any assertion
-fails, so it can be wired into CI. All four protocols have been live-tested against a BDS 1.26.33.1
-host and against a real LAN world on another machine; see
+fails, so it can be wired into CI. The four pre-1.26.60 protocols have been live-tested against a
+BDS 1.26.33.1 host and against a real LAN world on another machine; **1.26.60 (2225) is now
+live-tested on both host and client sides** against BDS 1.26.60.6 and BDS 1.26.33.1
+(see [Live 1.26.60 session](#live-1260-session-2026-11-10)); see
 [What is actually verified](#what-is-actually-verified).
 
 Multiple clients of *different* versions can be relayed into the same host at once — spawn capture and
@@ -166,39 +296,44 @@ the spawn-prefix gate are per-session, keyed by connection.
   (`minecraft:info_update`), counted in the log. It is never turned into air and never silently
   claimed as exact.
 - A source ID that is not in the pinned palette at all is a **hard error**, not a guess.
-- Item registries are per-protocol as well (`internal/blocktranslate/items.go`): `2193` comes from
-  the pinned Cloudburst snapshot (2076 items); `1001` (1933) and `2169` (1976) are built from the
-  same `go-multiversion` `vanilla_items.nbt` snapshots the protocol adapters use, via
-  `mapping.NewItemMapper(...).TargetEntries()`. `2168` shares `2169` because
+- Item registries are per-protocol as well (`internal/blocktranslate/items.go`): the **native
+  `2225`** table (2080 items) is `go-multiversion/data/v2225/vanilla_items.nbt`, the same snapshot
+  the `v1_26_50`+ adapters consume. `1001` (1933), `2169` (1976) and `2193` (2076) are built from
+  the corresponding `go-multiversion` `vanilla_items.nbt` snapshots via
+  `mapping.NewItemMapper(native, target).TargetEntries()`. `2168` shares `2169` because
   `v1_26_44.NewWithRegistries` delegates to `v1_26_45`. A test asserts each table is byte-for-byte
-  the name/ID mapping its registry-aware codec emits.
+  the name/ID mapping its registry-aware codec emits; `TestNative2225RegistryPinsData` pins all
+  five counts and the hashed 2225 palette.
 - Which table goes into `GameData.Items` depends on the client codec. A **registry-aware** codec
-  (`1001`, `2168` and `2169` by default — all built with `NewWithRegistries`) translates
-  `ItemRegistry` itself and expects the **native `2193`** table as input — feeding it the client's
+  (`1001`, `2168`, `2169` and now `2193` — all built with `NewWithRegistries`) translates
+  `ItemRegistry` itself and expects the **native `2225`** table as input — feeding it the client's
   own table makes `ValidateNativeEntries` fail and the packet is dropped. A **registry-less** codec
-  (the `2168`/`2169` plain `New()` fallback behind `-map-gameplay-items=false`, and the native
-  `2193` default protocol) passes it through, so it must be handed the client's own table.
+  (the plain `New()` fallback behind `-map-gameplay-items=false`, and the native `2225` default
+  protocol) passes it through, so it must be handed the client's own table.
   `clientItemRegistry()` implements that rule; both branches are tested in `item_registry_test.go`
   and `item_gameplay_test.go`.
 - The registry-aware codecs also translate item runtime IDs **inside gameplay packets**, in both
-  directions, not just the advertised registry. Measured offline: 259 item names carry different
-  `2193`/`2169` IDs (1717 are identical), `minecraft:apple` maps `882 → 878` and back `878 → 882`
-  (`1001` uses `285`), and `plain New()` leaves `882` untouched. `item_gameplay_test.go` pins a
+  directions, not just the advertised registry. Historical offline measurement on the
+  **2193-native** build: 259 item names carry different `2193`/`2169` IDs (1717 are identical),
+  `minecraft:apple` maps `882 → 878` and back `878 → 882` (`1001` uses `285`), and `plain New()`
+  leaves `882` untouched. On the 2225-native build the same remapping applies to
+  `1001`/`2168`/`2169`/`2193`; `2225` is the identity control. `item_gameplay_test.go` pins a
   **six-packet smoke subset** (including `ItemRegistry`); `semantic_coverage_test.go` measures the
-  real coverage: **10 stack-carrying packet families (8 H2C + 2 C2H) + the `ItemRegistry` table** are remapped by
-  `1001`/`2168`/`2169`, with `plain New()` and the native `2193` identity codec as pass-through
-  controls. An unknown runtime ID is not dropped but replaced by AIR (`hideUnknown=true`).
-  Disable with `-map-gameplay-items=false` to reproduce the old behaviour. See
-  [Semantic packet coverage](#semantic-packet-coverage-proto-005).
-- `SubChunk` v8 → v9 is upgraded when the target is `2193` (the Y byte after the storage count is new
-  in v9); downgrades keep the remaining LevelChunk tail bytes intact.
+  real coverage: **10 stack-carrying packet families (8 H2C + 2 C2H) + the `ItemRegistry` table**
+  are remapped by the registry-aware adapters. An unknown runtime ID is not dropped but replaced by
+  AIR (`hideUnknown=true`). Disable with `-map-gameplay-items=false` to reproduce the old behaviour.
+  See [Semantic packet coverage](#semantic-packet-coverage-proto-005).
+- `SubChunk` v8 → v9 is upgraded when the target is `2193` **or the native `2225`** (the Y byte
+  after the storage count is new in v9); downgrades keep the remaining LevelChunk tail bytes intact.
 
-Palette sources are pinned by commit and SHA-256 in
+The three historical palette snapshots are pinned by commit and SHA-256 in
 `internal/blocktranslate/data/manifest.json` (Apache-2.0, from [CloudburstMC/Data](https://github.com/CloudburstMC/Data)).
-The historical item snapshots are pinned by the `go-multiversion` version in `go.sum`; their own
-manifests record the dragonfly commits. Protocol `2169` shares the `2168` block schema; a test
-asserts the full typed-state set matches the pinned `2169` snapshot rather than reusing the `2168`
-codec.
+The **native 2225** palette/item snapshots are NOT embedded here: they come from the pinned
+`go-multiversion` `data/v2225` package (dragonfly commit `d86aefd9`, SHA-256 recorded in the same
+manifest). 2225 wire block IDs are **hashed**, so there is no `network_id` to pin — the loader
+computes `StateHash(name, properties)` and rejects collisions. Protocol `2169` shares the `2168`
+block schema; a test asserts the full typed-state set matches the pinned `2169` snapshot rather
+than reusing the `2168` codec.
 
 ## Flags
 
@@ -208,8 +343,8 @@ codec.
 | `-listen-nethernet` | off | `CONN-002`: accept clients over NetherNet/WebRTC LAN discovery instead of RakNet; the relay advertises on UDP 7551 through `lansignal` |
 | `-world` | *(auto)* | level name or NetworkID; empty = the only world found |
 | `-timeout` | `20s` | LAN discovery window |
-| `-client-proto` | `auto` | force the client-side protocol (`1001`/`2168`/`2169`/`2193`) |
-| `-host-proto` | `auto` | force the host-side protocol |
+| `-client-proto` | `auto` | force the client-side protocol (`1001`/`2168`/`2169`/`2193`/`2225`); `auto` accepts all five |
+| `-host-proto` | `auto` | force the host-side protocol (`1001`/`2168`/`2169`/`2193`/`2225`) |
 | `-host-raknet` | *(off)* | dial the host directly over RakNet (`host:port`), skipping LAN discovery — for a BDS with `transport=raknet` and the self-check harness |
 | `-map-gameplay-items` | `true` | build the `2168`/`2169` codecs with `NewWithRegistries` so item IDs inside gameplay packets are translated; `false` restores plain `New()` for bisect |
 | `-trace` | `40` | print the first N packet names per direction, `0` = off |
@@ -264,9 +399,11 @@ Honest scope, because "it builds" and "it works" are different claims.
   observed from a client at all. The one-player BDS lab emits only 5–6 of the 8 H2C families
   (`AddPlayer` / `MobArmourEquipment` never occur), so the >5,000 stacks remain a lower bound on
   the wire's item IDs — see "Live item census".
-- **Invisible-item audit (offline, wire-level):** `cmd/itemaudit` pushes every native `2193` item
+- **Invisible-item audit (offline, wire-level):** `cmd/itemaudit` pushes every native item
   through the real client codec, encodes the packet with that protocol's writer, then decodes it
-  with its own packet pool/reader — the same path `Conn.ReadPacket` uses. `NetworkID=0` after the
+  with its own packet pool/reader — the same path `Conn.ReadPacket` uses. The numbers below are
+  from the **2193-native** build; the current 2225-native numbers are in the
+  [1.26.60 section](#1260--protocol-2225). `NetworkID=0` after the
   round trip means the client decodes AIR. Measured 2026-11-05: `1001` → **143** invisible of 2076,
   `2168`/`2169` → **100**, `2193` → **0**, `wrong_id=0` everywhere, and the lost set matches
   `MappingReport().ItemFallbacks` exactly (143 for `1001`, 100 for `2169`; `2168` does not export
@@ -403,6 +540,7 @@ index; the detailed numbers and boundaries live in the linked sections above.
 | #27 | Live two-machine LAN join with `selfcheck -lan-join` + two NetherNet fixes | `b0a3fe3` / `42037071018` | Real LAN world on another machine (`192.168.1.119:7551`, `My World`, proto `2193`): **13/13** sessions connected / dialled / spawned; `level=ERROR` **0** (was 8 `non-offer signal`), `dropped 1 packet` **0** (was 592), `relay write end (destination closed)` 5. `-reconnect 3` → 4/4 OK; sequential `1001`/`2168`/`2169` → 3/3 OK. Full `go test -race ./...` clean. Measured upstream constraint: the LAN host accepts only one active NetherNet connection at a time |
 | #28–#32 | GUI interaction translation (C2H): hashed `UseItem` IDs, no double-map, 130→131 prediction-sync bitset, `selfcheck -interactions` | `c36079c` / `42048437016` | Real GUI client log (`ILwHee`, `1001` → `2193`, 6 min): 13 `bitset size mismatch` drops → **0**. Re-verified **8/8** sessions (four protocols + `-reconnect 3`), `level=ERROR` **0**, `dropped 1 packet` **0**, `client codec returned no packets` **0**, every C→H tally `skipped=0` with `InventoryTransaction=2` + `ClientMovementPredictionSync=3` + 8 other families. Offline **33/33** codec×family no-drop cases + **3/3** hashed `MobEquipment` value checks. Full `go test -race ./...` clean (also fixed a real `*net.UDPAddr` data race in `TestNetherNetIngressLoopback`) |
 | #33–#36 | GUI block-render translation (H→C): hashed `StateHash` IDs corrupted by the client codec | `e950d46` / `42060328231` | Measured stone hash `0x80310e21` → `0x3326` on `1001`, `0x353d` on `2168`/`2169` for `UpdateBlock`, `UpdateBlockSynced`, `UpdateSubChunkBlocks`, `LevelEvent`, `LevelSoundEvent` and nested `ItemStack.BlockRuntimeID`. `scrubHashedBlockIDs` + hashed-aware `adapterMapsBlocks` + **keyed** (not positional) restore after measuring that creative/recipe filtering corrupted 1812/1933 surviving hashes. Offline **39/39** (3 protocols × 13 H→C families) + gate/restore/adapter/alignment tests, creative 2076→1933/1976/1976 with 0 wrong hashes, recipes 8→7. Live **8/8** sessions against the real LAN world: `level=ERROR` 0, `dropped 1 packet` 0, `client codec returned no packets` 0, `bitset size mismatch` 0, unmatched restore 0, all tallies `skipped=0`. Full `go test -race ./...` clean |
+| #40–#41 | 1.26.60 / protocol 2225 support (native registry upgrade) | *local working tree, not yet committed / no CI run* | `gophertunnel-2225` fork + `go-multiversion 2026-11-07` + `go-nethernet v1.0.26`. Native 2225: **23960** hashed states, **2080** items, `air=18894`. `cmd/itemaudit` measured `lost=147/104/104/4/0` for `1001/2168/2169/2193/2225`, `wrong_id=0`; the 4 lost items are the 2225 additions. Fixed 3 real regressions: `identityDialer` shim (NetherNet loopback **0.63 s**), wrapped-packet `GameVersion` override, and `-client-proto auto` dropping 2193 clients. Full `go build`/`go vet`/`go test -buildvcs=false ./...` green. **Live BDS 1.26.60.6 (2026-11-10):** host 2225 × clients `1001/2168/2169/2193/2225` → **5/5 spawned** (`items=1933/1976/1976/2076/2080`, `registry=true`, `OK=true`); `clientclone` census `lost=0 unknown=0` for `1001/2193/2225`; reverse direction client 2225 → host 1001 → 2/2 spawned, census `lost=0 unknown=0`. Relay #1 8/8 sessions, relay #2 2/2, 0 code-level ERROR. See [Live 1.26.60 session](#live-1260-session-2026-11-10) |
 
 Only #19, the live parts of #21, #22 and #26 needed the BDS lab; #20, #23, #24 and the #21
 loopback harness are fully offline. #27 and #28–#32 were measured against a real LAN world on
@@ -416,7 +554,7 @@ packages (2026-11-05); race coverage is therefore not limited to the three targe
 
 ## Limitations
 
-- **The client must be signed into Xbox Live.** The vendored `2193` fork does not rescue an empty
+- **The client must be signed into Xbox Live.** The vendored `2225` fork does not rescue an empty
   `DisplayName`, so an offline client is rejected at login with
   `DisplayName must not be empty`. A real Microsoft account is required on the client side.
 - **Real GUI game-client interaction is still user-side verification.** `cmd/selfcheck -interactions`
@@ -567,7 +705,7 @@ packages (2026-11-05); race coverage is therefore not limited to the three targe
 cmd/xvrelay/                 the relay: listener, dialer, spawn gate, translation wiring, bisect flags
 cmd/xvrelay/audit.go         re-parse client-bound chunks, check state IDs against the target registry
 cmd/xvrelay/host_recipes1001.go  recipe / creative-item / movement-bitset handling for 1001 hosts
-cmd/xvrelay/host_creative1001_test.go  pins host-1001 creative IDs -> native 2193 IDs
+cmd/xvrelay/host_creative1001_test.go  pins host-1001 creative IDs -> native 2225 IDs
 cmd/xvrelay/item_gameplay_test.go  offline assertions for gameplay item-ID translation
 cmd/xvrelay/block_translation.go  H2C palette translation + C2H interaction scrub / no-double-map / prediction-sync bitset resize + H2C hashed StateHash guard (scrubHashedBlockIDs with keyed restore, hashed-aware adapterMapsBlocks)
 cmd/xvrelay/block_translation_test.go  offline C2H regression tests (hashed UseItem IDs, wrapper unwrap, 33 codec x family no-drop) + H2C hashed block-ID tests (3 protocols x 13 families, numeric gate, input restore, adapterMapsBlocks, creative/recipe alignment)
@@ -588,7 +726,7 @@ internal/lansignal/pong_test.go  MCPE-pong -> binary ServerData conversion + CON
 internal/lansignal/ingress_test.go  Ingress() keeps outbound-dial signals away from the NetherNet listener
 internal/mcport/          Minecraft port detection helpers
 java/                     JVM port of the translation layer — status and scope in java/README.md
-third_party/              pinned forks of go-nethernet and gophertunnel (protocol 2193 support)
+third_party/              pinned forks of go-nethernet (v1.0.26) and gophertunnel (protocol 2225 native)
 docs/                     protocol matrix, block-translation design notes, research notes
 ```
 
@@ -743,7 +881,7 @@ failing on a weird manifest version returns early without decrementing `packAmou
 | `-pack-overrun` | `abort` | `abort` = cancel the host dial; `report` = log and keep downloading |
 | `-pack-prefetch` | `false` | one extra host dial before the listener (no-op unless mode is `download`/`limit`) |
 
-How the guard works, with the measured seams in the vendored `2193` fork:
+How the guard works, with the measured seams in the vendored gophertunnel fork (now 2225-native):
 
 1. `packet.go:74` calls `conn.proto.ConvertToLatest(pk, conn)` for every decoded packet,
    **before** `handlePacket()`. `packSniffProtocol` wraps the host codec there, so it sees
@@ -790,8 +928,8 @@ provide everything needed:
 | `nethernet.Signaling` | `third_party/go-nethernet/signal.go` | `Signal` / `Notify` / `Credentials` / `NetworkID` / `PongData` / `Context` |
 | `nethernet.ListenConfig.Listen(signaling)` | `third_party/go-nethernet/listener.go` | receives `CONNECTREQUEST` offers, emits `CONNECTRESPONSE`, runs ICE/DTLS/SCTP, `Accept()` returns `net.Conn` |
 | `discovery.Listener` | `third_party/go-nethernet/discovery/listener.go` | LAN signalling over UDP 7551 |
-| `minecraft.NetherNet.Listen` | `third_party/gophertunnel-2193/minecraft/nethernet.go` | adapts the above to `minecraft.Network` |
-| `minecraft.ListenConfig.ListenNetwork` | `third_party/gophertunnel-2193/minecraft/listener.go` | wraps it in the standard `Listener` whose `Accept()` yields `*minecraft.Conn` |
+| `minecraft.NetherNet.Listen` | `third_party/gophertunnel-2225/minecraft/nethernet.go` | adapts the above to `minecraft.Network` |
+| `minecraft.ListenConfig.ListenNetwork` | `third_party/gophertunnel-2225/minecraft/listener.go` | wraps it in the standard `Listener` whose `Accept()` yields `*minecraft.Conn` |
 
 `internal/lansignal.Signaling` already implements `nethernet.Signaling` (it was written to
 *discover* LAN worlds and *dial* the host). A single instance can be both halves of a connection:

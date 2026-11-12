@@ -749,10 +749,33 @@ func TestHashedBlockCraftingDataSurvivesCodec(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// Pick native items that actually exist on the 1001 target. The native table is 2225
+	// (2080 entries, dragonfly IDs) and its slice order no longer lines up with 1001, so
+	// taking native[i*7] blindly selects items absent from 1001 and every recipe is filtered.
+	target1001, err := blocktranslate.Items(1001)
+	if err != nil {
+		t.Fatal(err)
+	}
+	on1001 := make(map[string]bool, len(target1001))
+	for _, e := range target1001 {
+		on1001[e.Name] = true
+	}
+	var mappable []protocol.ItemEntry
+	for _, e := range native {
+		if on1001[e.Name] {
+			mappable = append(mappable, e)
+			if len(mappable) == 8 {
+				break
+			}
+		}
+	}
+	if len(mappable) < 8 {
+		t.Fatalf("only %d native items exist on 1001, need 8", len(mappable))
+	}
 	makePK := func() *packet.CraftingData {
 		recipes := make([]protocol.ShapedRecipe, 0, 8)
 		for i := 0; i < 8; i++ {
-			netID := int32(native[i*7].RuntimeID)
+			netID := int32(mappable[i].RuntimeID)
 			if i == 3 {
 				// Deliberately unmappable: filterShapedRecipes drops this recipe,
 				// so a positional restore would shift every later recipe.

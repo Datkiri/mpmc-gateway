@@ -97,6 +97,43 @@ type Dialer struct {
 	DisableTrickleICE bool
 }
 
+// Dial establishes a Conn with a remote network referenced by the ID with a 15-second timeout.
+// The Signaling implementation is used to signal an offer with local candidates, and also to
+// notify incoming signals received from the remote network. A Conn may be returned, that is
+// ready to receive and send packets. It is equivalent to calling Dialer{}.Dial.
+//
+// If the dial fails, a terminal error signal describing the failure may still be sent to the remote network
+// asynchronously; it is abandoned after [SignalErrorTimeout].
+func Dial(networkID string, signaling Signaling) (*Conn, error) {
+	var d Dialer
+	return d.Dial(networkID, signaling)
+}
+
+// DialContext establishes a Conn with a remote network referenced by the ID. The Signaling is used to signal
+// an offer with local candidates, and also to notify incoming signals received from the remote network. The
+// [context.Context] may be used to cancel the connection as soon as possible. A Conn may be returned, that is
+// ready to receive and send packets. It is equivalent to calling Dialer{}.DialContext.
+//
+// If the dial fails, a terminal error signal describing the failure may still be sent to the remote network
+// asynchronously; it is abandoned after [SignalErrorTimeout].
+func DialContext(ctx context.Context, networkID string, signaling Signaling) (*Conn, error) {
+	var d Dialer
+	return d.DialContext(ctx, networkID, signaling)
+}
+
+// Dial establishes a Conn with a remote network referenced by the ID with a 15-second timeout.
+// The Signaling implementation is used to signal an offer with local candidates, and also to
+// notify incoming signals received from the remote network. A Conn may be returned, that is
+// ready to receive and send packets.
+//
+// If the dial fails, a terminal error signal describing the failure may still be sent to the remote network
+// asynchronously; it is abandoned after [SignalErrorTimeout].
+func (d Dialer) Dial(networkID string, signaling Signaling) (*Conn, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), time.Second*15)
+	defer cancel()
+	return d.DialContext(ctx, networkID, signaling)
+}
+
 // DialContext establishes a Conn with a remote network referenced by the ID. The Signaling is used to signal
 // an offer with local candidates, and also to notify incoming signals received from the remote network. The
 // [context.Context] may be used to cancel the connection as soon as possible. A Conn may be returned, that is
@@ -342,11 +379,7 @@ func (d Dialer) startTransports(ctx context.Context, conn *Conn, desc *descripti
 	}
 
 	conn.log.Debug("starting SCTP transport")
-	if err := withContextCancel(ctx, func() error {
-		return conn.sctp.Start(desc.sctp)
-	}, func() {
-		_ = conn.sctp.Stop()
-	}); err != nil {
+	if err := conn.sctp.StartContext(ctx, desc.sctp); err != nil {
 		return fmt.Errorf("start SCTP: %w", err)
 	}
 	conn.maxSegmentPayload.Store(conn.sctp.GetCapabilities().MaxMessageSize - 1)

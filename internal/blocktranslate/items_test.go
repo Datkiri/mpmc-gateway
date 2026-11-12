@@ -10,12 +10,14 @@ import (
 	"github.com/shawtymarco/go-multiversion/protocols/v1_26_30"
 	"github.com/shawtymarco/go-multiversion/protocols/v1_26_44"
 	"github.com/shawtymarco/go-multiversion/protocols/v1_26_45"
+	"github.com/shawtymarco/go-multiversion/protocols/v1_26_50"
 )
 
 // TestItemRegistries pins the shape of every table the relay can advertise. The counts come from
-// the upstream snapshots: Cloudburst 2193 = 2076, dragonfly v1001 = 1933, v2169 = 1976.
+// the upstream snapshots: native 2225 = 2080, Cloudburst 2193 = 2076, dragonfly v1001 = 1933,
+// v2169 = 1976.
 func TestItemRegistries(t *testing.T) {
-	want := map[int32]int{1001: 1933, 2168: 1976, 2169: 1976, 2193: 2076}
+	want := map[int32]int{1001: 1933, 2168: 1976, 2169: 1976, 2193: 2076, NativeProtocol: 2080}
 	for id, count := range want {
 		entries, err := Items(id)
 		if err != nil {
@@ -51,7 +53,7 @@ func TestItemRegistries(t *testing.T) {
 }
 
 // convertRegistry runs a codec's ConvertFromLatest on an ItemRegistry and returns the entries the
-// client would actually receive. conn=nil is safe for this packet in all four codecs: the
+// client would actually receive. conn=nil is safe for this packet in every codec: the
 // ItemRegistry branch is handled before any conn dereference, and downgradePacket guards nil.
 func convertRegistry(t *testing.T, p minecraft.Protocol, items []protocol.ItemEntry) []protocol.ItemEntry {
 	t.Helper()
@@ -74,7 +76,8 @@ func TestItemRegistryMatchesCodec(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	blocks, err := NativeRegistry(2193)
+	// The adapters expect the NATIVE (2225) block registry, not 2193's.
+	blocks, err := NativeRegistry(NativeProtocol)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -86,6 +89,7 @@ func TestItemRegistryMatchesCodec(t *testing.T) {
 		{1001, func() (minecraft.Protocol, error) { return v1_26_30.NewWithRegistries(blocks, native) }},
 		{2168, func() (minecraft.Protocol, error) { return v1_26_44.NewWithRegistries(blocks, native) }},
 		{2169, func() (minecraft.Protocol, error) { return v1_26_45.NewWithRegistries(blocks, native) }},
+		{2193, func() (minecraft.Protocol, error) { return v1_26_50.NewWithRegistries(blocks, native) }},
 	}
 	for _, c := range cases {
 		p, err := c.build()

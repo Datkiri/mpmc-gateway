@@ -1,10 +1,15 @@
 package main
 
 import (
+	"bytes"
+	"strconv"
+	"strings"
 	"testing"
 
-	"github.com/sandertv/gophertunnel/minecraft"
+	"bedrock-cross-version-relay/internal/blocktranslate"
+
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
+	v1_26_50 "github.com/shawtymarco/go-multiversion/protocols/v1_26_50"
 )
 
 // TestProtocolForVersion is the table-driven oracle for PROTO-001. Every version the README
@@ -20,6 +25,7 @@ func TestProtocolForVersion(t *testing.T) {
 		{"1.26.40", 2168}, {"1.26.41", 2168}, {"1.26.42", 2168}, {"1.26.43", 2168}, {"1.26.44", 2168},
 		{"1.26.45", 2169},
 		{"1.26.50", 2193}, {"1.26.51", 2193}, {"1.26.52", 2193},
+		{"1.26.60", 2225},
 		{"1.26.46", 0}, {"1.26.49", 0}, {"1.27.0", 0}, {"", 0}, {"*", 0}, {"not-a-version", 0},
 	}
 	for _, c := range cases {
@@ -30,7 +36,7 @@ func TestProtocolForVersion(t *testing.T) {
 
 	// Every mapped protocol must have a codec; a table entry pointing at a protocol the relay
 	// cannot serve would let verifyHostProtocol accept a session that cannot decode the wire.
-	for _, id := range []int32{1001, 2168, 2169, 2193} {
+	for _, id := range []int32{1001, 2168, 2169, 2193, 2225} {
 		p, ok := resolveProto(id)
 		if !ok {
 			t.Errorf("resolveProto(%d) has no codec", id)
@@ -42,10 +48,48 @@ func TestProtocolForVersion(t *testing.T) {
 	}
 }
 
+// TestAutoClientProtocolsCoverEveryCodec pins the -client-proto auto list. The native codec moved
+// from 2193 to 2225: the mandatory native add in main() only covers 2225, so dropping 2193 from
+// the auto list silently rejects every 1.26.50-52 client.
+func TestAutoClientProtocolsCoverEveryCodec(t *testing.T) {
+	got := map[int32]bool{}
+	for _, s := range strings.Split(autoClientProtocols, ",") {
+		id, err := strconv.Atoi(strings.TrimSpace(s))
+		if err != nil {
+			t.Fatalf("bad protocol in autoClientProtocols: %q", s)
+		}
+		if _, ok := resolveProto(int32(id)); !ok {
+			t.Errorf("autoClientProtocols lists %d but resolveProto has no codec", id)
+		}
+		got[int32(id)] = true
+	}
+	for _, id := range []int32{1001, 2168, 2169, 2193, 2225} {
+		if !got[id] {
+			t.Errorf("-client-proto auto is missing protocol %d", id)
+		}
+	}
+	if !got[blocktranslate.NativeProtocol] {
+		t.Errorf("-client-proto auto is missing the native protocol %d", blocktranslate.NativeProtocol)
+	}
+
+	probed := map[int32]bool{}
+	for _, id := range hostProtoProbeOrder {
+		if _, ok := resolveProto(id); !ok {
+			t.Errorf("hostProtoProbeOrder lists %d but resolveProto has no codec", id)
+		}
+		probed[id] = true
+	}
+	for _, id := range []int32{1001, 2168, 2169, 2193, 2225} {
+		if !probed[id] {
+			t.Errorf("hostProtoProbeOrder never tries protocol %d", id)
+		}
+	}
+}
+
 // TestVerifyHostProtocol checks the "mismatched host" case: a host that accepted a foreign
 // protocol still declares its real version in StartGame, and the relay must notice.
 func TestVerifyHostProtocol(t *testing.T) {
-	codec := minecraft.DefaultProtocol // 2193, the native StartGame layout
+	codec, _ := resolveProto(2193) // the 2193 wire codec (adapter over the 2225 native)
 
 	encode := func(version string) *spawnCapture {
 		t.Helper()
@@ -53,16 +97,41 @@ func TestVerifyHostProtocol(t *testing.T) {
 			EntityUniqueID: 1, EntityRuntimeID: 1, WorldName: "version-probe",
 			GameVersion: version, BaseGameVersion: "*",
 		}
-		raw, err := matrixEncode(codec, sg)
-		if err != nil {
-			t.Fatalf("encode StartGame(%q): %v", version, err)
-		}
+		// Encode with the frozen 2193 wire layout directly (WrapWirePacket), NOT through
+		// ConvertFromLatest: the adapter normalises GameVersion to its own Version constant,
+		// while a real host's wire keeps the exact string. This fixture models the host.
+		var buf bytes.Buffer
+		v1_26_50.WrapWirePacket(sg).Marshal(codec.NewWriter(&buf, 0))
+		raw := buf.Bytes()
 		decoded, err := decodeRawStartGameWith(codec, raw)
 		if err != nil {
 			t.Fatalf("decode StartGame(%q): %v", version, err)
 		}
 		if decoded.GameVersion != version {
 			t.Fatalf("StartGame version changed on the wire: %q -> %q", version, decoded.GameVersion)
+		}
+		cap := &spawnCapture{}
+		cap.startGame.Store(&raw)
+		return cap
+	}
+
+	// A 1.26.60 host writes the native 2225 StartGame layout (no wirePacket wrapper).
+	encode2225 := func(version string) *spawnCapture {
+		t.Helper()
+		native, _ := resolveProto(blocktranslate.NativeProtocol)
+		sg := &packet.StartGame{
+			EntityUniqueID: 1, EntityRuntimeID: 1, WorldName: "version-probe",
+			GameVersion: version, BaseGameVersion: "*",
+		}
+		var buf bytes.Buffer
+		sg.Marshal(native.NewWriter(&buf, 0))
+		raw := buf.Bytes()
+		decoded, err := decodeRawStartGameWith(native, raw)
+		if err != nil {
+			t.Fatalf("decode native StartGame(%q): %v", version, err)
+		}
+		if decoded.GameVersion != version {
+			t.Fatalf("native StartGame version changed on the wire: %q -> %q", version, decoded.GameVersion)
 		}
 		cap := &spawnCapture{}
 		cap.startGame.Store(&raw)
@@ -78,6 +147,8 @@ func TestVerifyHostProtocol(t *testing.T) {
 	}{
 		{"matching 2193", encode("1.26.51"), 2193, "1.26.51", true},
 		{"matching 1.26.52", encode("1.26.52"), 2193, "1.26.52", true},
+		{"matching 2225", encode2225("1.26.60"), 2225, "1.26.60", true},
+		{"2225 host, no StartGame captured", &spawnCapture{}, 2225, "", true},
 		{"host is really 1001", encode("1.26.33"), 2193, "1.26.33", false},
 		{"host is really 2168", encode("1.26.44"), 2193, "1.26.44", false},
 		{"host is really 2169", encode("1.26.45"), 2193, "1.26.45", false},

@@ -2,13 +2,16 @@
 //
 // Goal: relay and TRANSLATE the protocol between a client and a LAN world, in both directions:
 //
-//	OLD client  (1.26.33 = 1001, 1.26.45 = 2169) -> NEW host (1.26.51 = 2193)
-//	NEW client  (1.26.51 = 2193)                 -> OLD host (1.26.33 = 1001)
+//	OLD client  (1.26.33 = 1001, 1.26.45 = 2169) -> NEW host (1.26.60 = 2225)
+//	NEW client  (1.26.60 = 2225)                 -> OLD host (1.26.33 = 1001)
+//
+// Supported protocol families: 1001, 2168, 2169, 2193 and the native 2225. The engine's internal
+// palette/item tables come from 2225; 2193 is produced by a frozen v1_26_50 adapter.
 //
 // Selected with `-host-proto` (default **auto** = read the host protocol from LAN discovery). If the
-// ServerData is v5/v6 — no Protocol field — then `dialHost` probes 2193 -> 2169 -> 1001 -> 2168 on the
-// first client (a host on the wrong protocol answers PlayStatusLoginFailedServer almost immediately,
-// so the probe is cheap).
+// ServerData is v5/v6 — no Protocol field — then `dialHost` probes 2225 -> 2193 -> 2169 -> 1001 ->
+// 2168 on the first client (a host on the wrong protocol answers PlayStatusLoginFailedServer almost
+// immediately, so the probe is cheap).
 //
 // Architecture (same shape as a working bridge; unlike a headless client, which copies raw bytes):
 //
@@ -87,6 +90,7 @@ import (
 	v1_26_30 "github.com/shawtymarco/go-multiversion/protocols/v1_26_30"
 	v1_26_44 "github.com/shawtymarco/go-multiversion/protocols/v1_26_44"
 	v1_26_45 "github.com/shawtymarco/go-multiversion/protocols/v1_26_45"
+	v1_26_50 "github.com/shawtymarco/go-multiversion/protocols/v1_26_50"
 )
 
 // ── Global state ───────────────────────────────────────────────────────────────────
@@ -524,6 +528,11 @@ func rawForward(clientProto int32, hostProto int32, id uint32, src *atomic.Point
 				if len(converted) != 1 {
 					return nil
 				}
+				// The adapter re-applies its own Version (e.g. 1.26.45 for the 2168 family) on the
+				// converted packet, so restore the client's version once more after conversion.
+				if sg2, ok := unwrapWirePacket(converted[0]).(*packet.StartGame); ok {
+					sg2.GameVersion, sg2.BaseGameVersion = version, version
+				}
 				return converted[0]
 			}
 		} else {
@@ -736,7 +745,7 @@ func (p clientVersionProtocol) ConvertFromLatest(pk packet.Packet, conn *minecra
 	// carried hm=1+data / rhm=4+no-data. A real 2193 server (dragonfly v0.11.5 chunk.go:64-130)
 	// NEVER emits type 4 and ALWAYS sets both HeightMap and RenderHeightMap with the same
 	// type/data. Mirror dragonfly: rhm := hm for every entry of a 2193 client.
-	if sc, ok := pk.(*packet.SubChunk); ok && protoID == 2193 {
+	if sc, ok := pk.(*packet.SubChunk); ok && (protoID == 2193 || protoID == 2225) {
 		cloned := *sc
 		cloned.SubChunkEntries = append([]protocol.SubChunkEntry(nil), sc.SubChunkEntries...)
 		changed := false
@@ -864,7 +873,25 @@ func (p clientVersionProtocol) ConvertFromLatest(pk packet.Packet, conn *minecra
 			}
 		}
 	}
-	return p.Protocol.ConvertFromLatest(pk, conn)
+	out = p.Protocol.ConvertFromLatest(pk, conn)
+	// ★ Post-conversion safety net. go-multiversion ≥ 2026-11-07 wraps adapter packets in
+	// wirePacket, so the v1_26_44 adapter's own StartGame patch (which type-asserts
+	// *packet.StartGame) no longer matches and a 1.26.40–44 client receives 1.26.45. Re-apply
+	// the client's version on the CONVERTED packet. Mutating the wirePacket's inner packet is
+	// safe: its Marshal reads from inner.
+	if p.enabled {
+		if v := conn.ClientData().GameVersion; v != "" {
+			for _, q := range out {
+				if sg, ok := unwrapWirePacket(q).(*packet.StartGame); ok {
+					if sg.GameVersion != v || sg.BaseGameVersion != v {
+						sg.GameVersion, sg.BaseGameVersion = v, v
+						slog.Info("xvrelay: post-conversion StartGame.GameVersion override", "version", v)
+					}
+				}
+			}
+		}
+	}
+	return out
 }
 
 // legacy1001LevelChunkPacket emits LevelChunk in protocol 1001's wire layout.
@@ -917,7 +944,8 @@ func legacy1001LevelChunkPacket(src *packet.LevelChunk) *packet.Unknown {
 //	1001 -> 1.26.30 (1.26.30–1.26.36) — WIP adapter, wire level only
 //	2168 -> v1_26_44
 //	2169 -> v1_26_45  ⚠️ a REAL 1.26.44 client sends 2169 (verified from logs)
-//	2193 -> the native codec of the tree being built
+//	2193 -> v1_26_50 (1.26.50–1.26.52) — adapter over the 2225 native codec
+//	2225 -> the native codec of the tree being built (1.26.60)
 func resolveProto(id int32) (minecraft.Protocol, bool) {
 	switch id {
 	case 1001:
@@ -927,6 +955,8 @@ func resolveProto(id int32) (minecraft.Protocol, bool) {
 	case 2169:
 		return proto2169(), true
 	case 2193:
+		return proto2193(), true
+	case 2225:
 		return minecraft.DefaultProtocol, true
 	}
 	return nil, false
@@ -947,6 +977,10 @@ var (
 	proto2169Once          sync.Once
 	proto2169Value         minecraft.Protocol
 	adapter2169HasRegistry bool
+
+	proto2193Once          sync.Once
+	proto2193Value         minecraft.Protocol
+	adapter2193HasRegistry bool
 )
 
 // registryAwareCodec builds a 2168/2169 adapter that knows BOTH the native 2193
@@ -956,19 +990,21 @@ var (
 // table the mapper builds cleanly and none of the six item-carrying packet
 // families are dropped.
 func registryAwareCodec(id int32) (minecraft.Protocol, error) {
-	reg, err := blocktranslate.NativeRegistry(2193)
+	reg, err := blocktranslate.NativeRegistry(blocktranslate.NativeProtocol)
 	if err != nil {
-		return nil, fmt.Errorf("native 2193 block registry: %w", err)
+		return nil, fmt.Errorf("native %d block registry: %w", blocktranslate.NativeProtocol, err)
 	}
 	items, err := blocktranslate.NativeItems()
 	if err != nil {
-		return nil, fmt.Errorf("native 2193 item registry: %w", err)
+		return nil, fmt.Errorf("native %d item registry: %w", blocktranslate.NativeProtocol, err)
 	}
 	switch id {
 	case 2168:
 		return v1_26_44.NewWithRegistries(reg, items)
 	case 2169:
 		return v1_26_45.NewWithRegistries(reg, items)
+	case 2193:
+		return v1_26_50.NewWithRegistries(reg, items)
 	}
 	return nil, fmt.Errorf("no registry-aware adapter for protocol %d", id)
 }
@@ -1014,6 +1050,28 @@ func proto2169() minecraft.Protocol {
 	return proto2169Value
 }
 
+// proto2193 returns the v1_26_50 adapter (1.26.50–1.26.52) built over the 2225 native
+// codec. Same registry contract as 2168/2169: NewWithRegistries is fed the NATIVE 2225
+// palette + item table so item runtime IDs inside gameplay packets are remapped.
+func proto2193() minecraft.Protocol {
+	proto2193Once.Do(func() {
+		if !mapGameplayItems {
+			proto2193Value = v1_26_50.New()
+			return
+		}
+		p, err := registryAwareCodec(2193)
+		if err != nil {
+			slog.Warn("xvrelay: NewWithRegistries(2193) failed — using wire-only", "error", err)
+			proto2193Value = v1_26_50.New()
+			return
+		}
+		adapter2193HasRegistry = true
+		proto2193Value = p
+		slog.Info("xvrelay: 2193 adapter uses registries (item + block mapping)")
+	})
+	return proto2193Value
+}
+
 func adapterHasRegistry(id int32) bool {
 	switch id {
 	case 1001:
@@ -1022,6 +1080,8 @@ func adapterHasRegistry(id int32) bool {
 		return adapter2168HasRegistry
 	case 2169:
 		return adapter2169HasRegistry
+	case 2193:
+		return adapter2193HasRegistry
 	}
 	return false
 }
@@ -1034,9 +1094,9 @@ func adapterHasRegistry(id int32) bool {
 // expensive, so it is cached.
 func proto1001() minecraft.Protocol {
 	proto1001Once.Do(func() {
-		reg, err := blocktranslate.NativeRegistry(2193)
+		reg, err := blocktranslate.NativeRegistry(blocktranslate.NativeProtocol)
 		if err != nil {
-			slog.Warn("xvrelay: cannot get the 2193 palette for the 1001 adapter — using wire-only", "error", err)
+			slog.Warn("xvrelay: cannot get the native palette for the 1001 adapter — using wire-only", "error", err)
 			proto1001Value = v1_26_30.New()
 			return
 		}
@@ -1103,10 +1163,12 @@ func clientItemRegistry(clientProto int32) ([]protocol.ItemEntry, string, error)
 		proto2168()
 	case 2169:
 		proto2169()
+	case 2193:
+		proto2193()
 	}
 	if adapterHasRegistry(clientProto) {
 		items, err := blocktranslate.NativeItems()
-		return items, fmt.Sprintf("native 2193 (%d codec translates it)", clientProto), err
+		return items, fmt.Sprintf("native %d (%d codec translates it)", blocktranslate.NativeProtocol, clientProto), err
 	}
 	items, err := blocktranslate.Items(clientProto)
 	return items, fmt.Sprintf("protocol %d (codec is pass-through)", clientProto), err
@@ -1148,6 +1210,8 @@ func protocolForVersion(v string) int32 {
 		return 2169
 	case "1.26.50", "1.26.51", "1.26.52":
 		return 2193
+	case "1.26.60":
+		return 2225
 	}
 	return 0
 }
@@ -2101,8 +2165,15 @@ func dialHost(ctx context.Context, ls *lansignal.Signaling, id uint64, cd login.
 }
 
 // hostProtoProbeOrder is the order tried when the host does NOT declare a protocol (ServerData
-// v5/v6).
-var hostProtoProbeOrder = []int32{2193, 2169, 1001, 2168}
+// v5/v6). 2225 comes first because it is both the newest family and the native codec; a host
+// declaring an older version still jumps straight to protocolForVersion(hv) after the first
+// StartGame, so the extra candidate costs one cheap rejected login at most.
+var hostProtoProbeOrder = []int32{2225, 2193, 2169, 1001, 2168}
+
+// autoClientProtocols is what -client-proto auto expands to. Every supported family must be
+// listed: 2193 stopped being the native codec when the engine moved to 2225, and the mandatory
+// native add below only covers 2225.
+const autoClientProtocols = "1001,2168,2169,2193,2225"
 
 func dialHostWith(ctx context.Context, ls *lansignal.Signaling, id uint64, cd login.ClientData, identity login.IdentityData, cap *spawnCapture, protoID int32, timeout time.Duration) (*minecraft.Conn, error) {
 	w, ok := worldByID(ls, id)
@@ -2741,9 +2812,9 @@ func main() {
 	timeout := flag.Duration("timeout", 20*time.Second, "how long to scan for LAN worlds")
 	trace := flag.Int("trace", 40, "print the first N packet names per direction (0 = off)")
 	clientProtos := flag.String("client-proto", "auto",
-		"client protocols to accept: auto = all (1001,2168,2169,2193) | list, e.g. 1001,2169")
+		"client protocols to accept: auto = all (1001,2168,2169,2193,2225) | list, e.g. 1001,2169")
 	hostProto := flag.String("host-proto", "auto",
-		"LAN world protocol: auto (read from LAN discovery) | 2193=1.26.51 | 2169=1.26.45 | 2168=1.26.44 | 1001=1.26.30-36")
+		"LAN world protocol: auto (read from LAN discovery) | 2225=1.26.60 | 2193=1.26.50-52 | 2169=1.26.45 | 2168=1.26.40-44 | 1001=1.26.30-36")
 	directHost := flag.String("host-raknet", "",
 		"dial the host directly over RakNet (host:port) instead of NetherNet/LAN discovery; for a BDS with transport=raknet and the self-check harness")
 	flag.BoolVar(&mapGameplayItems, "map-gameplay-items", true,
@@ -3056,7 +3127,7 @@ func main() {
 	// 2. The list of codecs the client accepts.
 	protoList := *clientProtos
 	if strings.EqualFold(protoList, "auto") {
-		protoList = "1001,2168,2169"
+		protoList = autoClientProtocols
 	}
 	var accepted []minecraft.Protocol
 	seen := map[int32]bool{}
@@ -3081,9 +3152,11 @@ func main() {
 		}
 		add(p, "flag")
 	}
-	// ★ MANDATORY: 2193 must be present BEFORE wrapping. The listener always appends `proto{}`
-	// (ID 2193) and selectProtocol takes the FIRST ID match ⇒ without 2193 the wrapper is shadowed.
-	native, _ := resolveProto(2193)
+	// ★ MANDATORY: the NATIVE protocol (2225) must be present BEFORE wrapping. The listener
+	// always appends its own default `proto{}` (ID 2225) and selectProtocol takes the FIRST ID
+	// match ⇒ without 2225 the wrapper is shadowed. 2193 is no longer native, so it must be
+	// listed explicitly in autoClientProtocols or 1.26.5x clients get rejected.
+	native, _ := resolveProto(blocktranslate.NativeProtocol)
 	add(native, "native (mandatory)")
 	for i, p := range accepted {
 		accepted[i] = wrapClientVersion(p, true)

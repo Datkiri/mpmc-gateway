@@ -72,12 +72,24 @@ func TestSameWireLegacyStartGamePatchVersion(t *testing.T) {
 		cap := &spawnCapture{}
 		cap.startGame.Store(&raw)
 		sessions.Store(conn, &session{hostProto: id, capture: cap})
-		got, err := matrixTarget(conn, codec, &packet.StartGame{PropertyData: map[string]any{}})
+		p := clientVersionProtocol{Protocol: codec, enabled: true}
+		out := p.ConvertFromLatest(&packet.StartGame{PropertyData: map[string]any{}}, conn)
 		sessions.Delete(conn)
-		if err != nil {
-			t.Fatalf("protocol%d: %v", id, err)
+		if len(out) != 1 {
+			t.Fatalf("protocol%d: relay emitted %d packets", id, len(out))
 		}
-		x := got.(*packet.StartGame)
+		// Read the WIRE bytes. ConvertToLatest (used by matrixDecode) rewrites
+		// StartGame.GameVersion to the adapter's own Version, which is not what the client sees.
+		var buf bytes.Buffer
+		out[0].Marshal(codec.NewWriter(&buf, 0))
+		// Read the WIRE bytes through the codec's own packet wrapper. Unwrapping first would
+		// decode with the native 2225 StartGame layout instead of the frozen 2193 wire layout.
+		holder := codec.Packets(false)[packet.IDStartGame]()
+		holder.Marshal(codec.NewReader(bytes.NewBuffer(buf.Bytes()), 0, true))
+		x, ok := unwrapWirePacket(holder).(*packet.StartGame)
+		if !ok {
+			t.Fatalf("protocol%d: no StartGame constructor", id)
+		}
 		if x.LevelID != "level" || x.ServerID != "server" || x.ServerChunkTickRadius != 6 || x.GameVersion != codec.Ver() {
 			t.Errorf("protocol%d lost metadata/version: level=%q server=%q ticks=%d version=%q", id, x.LevelID, x.ServerID, x.ServerChunkTickRadius, x.GameVersion)
 		}

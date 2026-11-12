@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"fmt"
 	"io"
 	"log/slog"
@@ -296,4 +297,18 @@ type fixedIDNetherNet struct {
 
 func (n fixedIDNetherNet) DialContext(ctx context.Context, _ string) (net.Conn, error) {
 	return n.NetherNet.DialContext(ctx, n.networkID)
+}
+
+// DialContextIdentity must be overridden as well, and it is the one that
+// actually matters on 1.26.60 (protocol 2225): DialContextNetwork now prefers
+// the identityDialer interface, and the method promoted from the embedded
+// minecraft.NetherNet satisfies it. Leaving it promoted bypasses the shim
+// above and feeds the ServerAddress straight to the signaling backend:
+//
+//	dial failure: signal offer: parse network ID "127.0.0.1:19132":
+//	strconv.ParseUint: parsing "127.0.0.1:19132": invalid syntax
+//
+// i.e. Accept() then times out because the WebRTC offer never names a peer.
+func (n fixedIDNetherNet) DialContextIdentity(ctx context.Context, _ string, token string, privateKey *ecdsa.PrivateKey) (net.Conn, error) {
+	return n.NetherNet.DialContextIdentity(ctx, n.networkID, token, privateKey)
 }

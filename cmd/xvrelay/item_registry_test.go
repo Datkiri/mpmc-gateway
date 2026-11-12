@@ -181,8 +181,10 @@ func shieldOf(items []protocol.ItemEntry) int32 {
 // TestShieldIDComesFromConvertedRegistry pins the trap that made a listener-side
 // Conn corrupt every item-bearing packet in protocol 1001.
 //
-// Measured 2026-11-05 with cmd/clientclone against a real BDS 1.26.33.1:
-//   - native 2193 table (GameData.Items): shield runtime ID 358,
+// Measured 2026-11-05 with cmd/clientclone against a real BDS 1.26.33.1
+// (2193-native build); re-verified on the 2225-native build: the shield ID is
+// still 358 in native 2225 and in 2168/2169/2193, and 387 in 1001:
+//   - native 2225 table (GameData.Items): shield runtime ID 358,
 //   - target 1001 table (what the client receives): shield runtime ID 387,
 //   - v1_26_30.marshalItemUserData appends an 8-byte BlockingTick when
 //     stack.NetworkID == ShieldID(),
@@ -197,9 +199,9 @@ func TestShieldIDComesFromConvertedRegistry(t *testing.T) {
 		t.Fatal(err)
 	}
 	if got := shieldOf(native); got != 358 {
-		t.Fatalf("native 2193 shield ID changed: got %d, want 358 — update the fixture", got)
+		t.Fatalf("native 2225 shield ID changed: got %d, want 358 — update the fixture", got)
 	}
-	for id, want := range map[int32]int32{1001: 387, 2168: 358, 2169: 358, 2193: 358} {
+	for id, want := range map[int32]int32{1001: 387, 2168: 358, 2169: 358, 2193: 358, 2225: 358} {
 		items, err := blocktranslate.Items(id)
 		if err != nil {
 			t.Fatal(err)

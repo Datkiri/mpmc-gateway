@@ -1,6 +1,6 @@
 // Command itemaudit answers one question with evidence instead of a guess:
 // which items would a Bedrock client NOT see in its inventory when the relay
-// translates between a native 2193 host and a historical client?
+// translates between a native 2225 (1.26.60) host and a historical client?
 //
 // It is deliberately OFFLINE. A real Bedrock client cannot be used for this
 // measurement here: Cinnabar is a GUI desktop client (make play), pinned to
@@ -23,7 +23,7 @@
 //
 // Usage:
 //
-//	go run ./cmd/itemaudit                        # all four protocols, every lost item
+//	go run ./cmd/itemaudit                        # all five protocols, every lost item
 //	go run ./cmd/itemaudit -proto 2169 -limit 20
 //	go run ./cmd/itemaudit -json dist/item-audit.json
 //	go run ./cmd/itemaudit -fail-on-loss         # non-zero exit when anything is lost
@@ -46,9 +46,10 @@ import (
 	v1_26_30 "github.com/shawtymarco/go-multiversion/protocols/v1_26_30"
 	v1_26_44 "github.com/shawtymarco/go-multiversion/protocols/v1_26_44"
 	v1_26_45 "github.com/shawtymarco/go-multiversion/protocols/v1_26_45"
+	v1_26_50 "github.com/shawtymarco/go-multiversion/protocols/v1_26_50"
 )
 
-var allProtocols = []int32{1001, 2168, 2169, 2193}
+var allProtocols = []int32{1001, 2168, 2169, 2193, 2225}
 
 const (
 	reasonNoTarget   = "NO_TARGET_ENTRY" // native item has no same-name entry in the target registry
@@ -73,7 +74,7 @@ type unknownProbe struct {
 
 // wireRangeProbe documents a real protocol constraint, not an invisible item:
 // ItemInstance writes NetworkID as int16, so IDs outside [-32768, 32767] are
-// truncated on the wire even by the identity 2193 codec.
+// truncated on the wire even by the identity 2225 codec.
 type wireRangeProbe struct {
 	InputRuntimeID    int32 `json:"input_runtime_id"`
 	ObservedNetworkID int32 `json:"observed_network_id"`
@@ -106,18 +107,18 @@ type auditReport struct {
 	Protocols []protoReport `json:"protocols"`
 }
 
-// codecFor mirrors cmd/xvrelay.resolveProto: registry-aware for the three
-// historical protocols, plain DefaultProtocol for the native 2193 client.
+// codecFor mirrors cmd/xvrelay.resolveProto: registry-aware for the four
+// historical protocols, plain DefaultProtocol for the native 2225 client.
 // It is duplicated here on purpose — the audit must be an INDEPENDENT binary
 // that does not import the relay's package main.
 func codecFor(id int32) (minecraft.Protocol, string, error) {
-	reg, err := blocktranslate.NativeRegistry(2193)
+	reg, err := blocktranslate.NativeRegistry(blocktranslate.NativeProtocol)
 	if err != nil {
-		return nil, "", fmt.Errorf("native 2193 block registry: %w", err)
+		return nil, "", fmt.Errorf("native %d block registry: %w", blocktranslate.NativeProtocol, err)
 	}
 	items, err := blocktranslate.NativeItems()
 	if err != nil {
-		return nil, "", fmt.Errorf("native 2193 item registry: %w", err)
+		return nil, "", fmt.Errorf("native %d item registry: %w", blocktranslate.NativeProtocol, err)
 	}
 	switch id {
 	case 1001:
@@ -130,6 +131,9 @@ func codecFor(id int32) (minecraft.Protocol, string, error) {
 		p, err := v1_26_45.NewWithRegistries(reg, items)
 		return p, "v1_26_45.NewWithRegistries", err
 	case 2193:
+		p, err := v1_26_50.NewWithRegistries(reg, items)
+		return p, "v1_26_50.NewWithRegistries", err
+	case 2225:
 		return minecraft.DefaultProtocol, "minecraft.DefaultProtocol (native, identity)", nil
 	default:
 		return nil, "", fmt.Errorf("unsupported protocol %d", id)
@@ -328,8 +332,8 @@ func auditProtocol(id int32, logf, plainf func(string, ...any)) protoReport {
 	}
 
 	// Unknown / custom runtime IDs: the host (or an add-on) sends an ID the
-	// native 2193 registry does not contain. hideUnknown=true turns it into AIR
-	// for registry-aware codecs; the identity 2193 codec keeps it as-is.
+	// native 2225 registry does not contain. hideUnknown=true turns it into AIR
+	// for registry-aware codecs; the identity 2225 codec keeps it as-is.
 	// IDs stay inside int16 so the wire field itself is not the confounder.
 	probeIDs := unusedInt16IDs(native, 3)
 	probeStacks := make([]protocol.ItemInstance, len(probeIDs))
@@ -418,8 +422,13 @@ func auditProtocol(id int32, logf, plainf func(string, ...any)) protoReport {
 		}
 	} else if id == 2168 {
 		r.CrossCheck = "not available: v1_26_44.Protocol wraps v1_26_45 without exporting MappingReport; the wire measurement is the direct evidence (2168 shares the 2169 target snapshot)"
+	} else if id == blocktranslate.NativeProtocol {
+		r.CrossCheck = fmt.Sprintf("not applicable: native %d codec is identity", id)
 	} else {
-		r.CrossCheck = "not applicable: native 2193 codec is identity"
+		// 2193: v1_26_50.NewWithRegistries does not export MappingReport either.
+		// Since the native registry is 2225, this adapter is no longer an
+		// identity codec: the 4 items added in 2225 have no 2193 target entry.
+		r.CrossCheck = fmt.Sprintf("not available: v1_26_50.Protocol does not export MappingReport; %d native-%d items have no 2193 target entry and become AIR", r.Lost, blocktranslate.NativeProtocol)
 	}
 
 	for _, li := range r.LostItems {
@@ -433,7 +442,7 @@ func auditProtocol(id int32, logf, plainf func(string, ...any)) protoReport {
 }
 
 func main() {
-	protoFlag := flag.Int("proto", 0, "audit only this protocol (1001|2168|2169|2193); 0 = all")
+	protoFlag := flag.Int("proto", 0, "audit only this protocol (1001|2168|2169|2193|2225); 0 = all")
 	jsonPath := flag.String("json", "", "write the full JSON report to this path")
 	limit := flag.Int("limit", 0, "max INVISIBLE/TARGET_ONLY detail lines per protocol (0 = all)")
 	failOnLoss := flag.Bool("fail-on-loss", false, "exit non-zero when any item is invisible (opt-in for CI)")
@@ -447,7 +456,7 @@ func main() {
 	}
 
 	report := auditReport{
-		Note: "Offline wire-level audit: every native 2193 item is pushed through the real client codec, " +
+		Note: "Offline wire-level audit: every native 2225 item is pushed through the real client codec, " +
 			"encoded with its writer and decoded with its own packet pool/reader. NetworkID=0 means the client " +
 			"decodes AIR. This is NOT a claim about what a real Bedrock client renders; it enumerates exactly " +
 			"which items would be missing. Cinnabar cannot be used as a headless multi-version client (GUI, " +
