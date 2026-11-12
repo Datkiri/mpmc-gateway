@@ -1,0 +1,1004 @@
+diff --git a/cmd/clientclone/behave.go b/cmd/clientclone/behave.go
+index 7bbc4d2..d8bbf61 100644
+--- a/cmd/clientclone/behave.go
++++ b/cmd/clientclone/behave.go
+@@ -307,7 +307,16 @@ func (s *session) join(addr string, direct bool, protoOverride int32, nameOverri
+ 	// Resolve live item IDs against the CLIENT's own protocol table: the relay
+ 	// encodes target-protocol IDs on the wire. Build the index before starting
+ 	// the read loop so observeItems() never sees a half-built map.
+-	if idx, err := newItemIndex(protoID); err != nil {
++	// With -live-item-registry, use the registry the SERVER declared instead:
++	// Geyser injects custom items whose runtime IDs are absent from the pinned
++	// protocol table, so the pinned table would misreport them as unknown.
++	if s.cfg.liveItemRegistry {
++		idx := newItemIndexFromEntries(s.gd.Items)
++		s.itemsIndex = idx
++		s.itemsReady.Store(true)
++		fmt.Fprintf(os.Stderr, "clientclone: item index ready proto=%d entries=%d (server-declared live registry)\n",
++			protoID, idx.count)
++	} else if idx, err := newItemIndex(protoID); err != nil {
+ 		slog.Warn("clientclone: item index unavailable", "proto", protoID, "error", err)
+ 	} else {
+ 		s.itemsIndex = idx
+diff --git a/cmd/clientclone/items.go b/cmd/clientclone/items.go
+index cfbdeac..b7e6b5d 100644
+--- a/cmd/clientclone/items.go
++++ b/cmd/clientclone/items.go
+@@ -47,6 +47,16 @@ func newItemIndex(proto int32) (itemIndex, error) {
+ 	if err != nil {
+ 		return itemIndex{}, err
+ 	}
++	return newItemIndexFromEntries(entries), nil
++}
++
++// newItemIndexFromEntries builds the index from the item registry a server
++// actually declared in StartGame/ItemRegistry. Runtime IDs on the wire are
++// server-defined, so this is the correct table for servers that add custom
++// items (Geyser's custom blocks/items are a superset of the pinned protocol
++// table). Resolving those against the pinned table reports them as unknown
++// even though the packet is perfectly valid.
++func newItemIndexFromEntries(entries []protocol.ItemEntry) itemIndex {
+ 	idx := itemIndex{
+ 		byID:   make(map[int32]string, len(entries)),
+ 		byName: make(map[string]int32, len(entries)),
+@@ -56,7 +66,7 @@ func newItemIndex(proto int32) (itemIndex, error) {
+ 		idx.byID[int32(e.RuntimeID)] = e.Name
+ 		idx.byName[e.Name] = int32(e.RuntimeID)
+ 	}
+-	return idx, nil
++	return idx
+ }
+ 
+ // itemStats is the per-session wire-level item census.
+diff --git a/cmd/clientclone/main.go b/cmd/clientclone/main.go
+index 44d0159..45051d5 100644
+--- a/cmd/clientclone/main.go
++++ b/cmd/clientclone/main.go
+@@ -56,6 +56,11 @@ type config struct {
+ 	inputFlags   bool
+ 	noFail       bool
+ 	itemLog      int // max item log lines; 0 = none, <0 = unlimited
++	// liveItemRegistry resolves wire item runtime IDs against the registry the
++	// SERVER declared (GameData.Items) instead of the pinned protocol table.
++	// Needed for servers that inject custom items, e.g. Geyser's custom blocks.
++	// Default off: BDS/relay runs keep the exact-table assertion unchanged.
++	liveItemRegistry bool
+ }
+ 
+ func codecFor(id int32) (minecraft.Protocol, error) {
+@@ -91,6 +96,26 @@ func sameItemIDs(a, b []protocol.ItemEntry) bool {
+ 	return true
+ }
+ 
++// pinnedItemsPresent is sameItemIDs without the length equality. A server may
++// declare extra custom items (Geyser's custom blocks do exactly that); what
++// must never happen is a pinned protocol item missing or remapped to a
++// different runtime ID. Duplicated names with conflicting IDs are rejected too.
++func pinnedItemsPresent(live, pinned []protocol.ItemEntry) bool {
++	ids := make(map[string]int16, len(live))
++	for _, e := range live {
++		if old, seen := ids[e.Name]; seen && old != e.RuntimeID {
++			return false
++		}
++		ids[e.Name] = e.RuntimeID
++	}
++	for _, e := range pinned {
++		if id, ok := ids[e.Name]; !ok || id != e.RuntimeID {
++			return false
++		}
++	}
++	return true
++}
++
+ type assertion struct {
+ 	Name   string `json:"name"`
+ 	OK     bool   `json:"ok"`
+@@ -241,9 +266,16 @@ func buildReport(s *session, cmdCount, cmdFailures int, quitReason string) repor
+ 		add("item_registry", false, "GameData().Items is empty")
+ 	default:
+ 		match := sameItemIDs(s.gd.Items, want)
++		detail := fmt.Sprintf("%d GameData entries vs %d pinned %d entries", len(s.gd.Items), len(want), s.proto)
++		if s.cfg.liveItemRegistry {
++			// Geyser declares its own custom items on top of the protocol table.
++			// Require the whole pinned table to be present with identical IDs;
++			// the extras are legitimate server-side additions, not lost items.
++			match = pinnedItemsPresent(s.gd.Items, want)
++			detail += fmt.Sprintf(" (live-registry mode, %d server custom extras)", len(s.gd.Items)-len(want))
++		}
+ 		r.ItemRegistryMatch = match
+-		add("item_registry", match,
+-			fmt.Sprintf("%d GameData entries vs %d pinned %d entries", len(s.gd.Items), len(want), s.proto))
++		add("item_registry", match, detail)
+ 	}
+ 
+ 	chunks := num("packet_LevelChunk")
+@@ -332,25 +364,27 @@ func run() int {
+ 		inputFlags   = flag.Bool("input-flags", false, "set jump/sneak/sprint flags in PlayerAuthInput (bisect)")
+ 		noFail       = flag.Bool("nofail", false, "always exit 0 even when assertions fail (bisect)")
+ 		itemLog      = flag.Int("item-log", 24, "max ITEM_VISIBLE/ITEM_LOST/ITEM_UNKNOWN_ID log lines (0 = off, <0 = all)")
++		liveItems    = flag.Bool("live-item-registry", false, "resolve item IDs against the server's declared GameData (for Geyser/custom-item servers); item_registry then requires the pinned table to be a subset")
+ 	)
+ 	flag.Parse()
+ 
+ 	cfg := config{
+-		addr:         *addr,
+-		direct:       *direct,
+-		proto:        int32(*proto),
+-		name:         *name,
+-		script:       *script,
+-		jsonPath:     *jsonPath,
+-		duration:     *duration,
+-		spawnTimeout: *spawnTimeout,
+-		auto:         *auto,
+-		verbose:      *verbose,
+-		noInput:      *noInput,
+-		noSubchunk:   *noSubchunk,
+-		inputFlags:   *inputFlags,
+-		noFail:       *noFail,
+-		itemLog:      *itemLog,
++		addr:             *addr,
++		direct:           *direct,
++		proto:            int32(*proto),
++		name:             *name,
++		script:           *script,
++		jsonPath:         *jsonPath,
++		duration:         *duration,
++		spawnTimeout:     *spawnTimeout,
++		auto:             *auto,
++		verbose:          *verbose,
++		noInput:          *noInput,
++		noSubchunk:       *noSubchunk,
++		inputFlags:       *inputFlags,
++		noFail:           *noFail,
++		itemLog:          *itemLog,
++		liveItemRegistry: *liveItems,
+ 	}
+ 	if cfg.spawnTimeout <= 0 || cfg.duration < 0 {
+ 		fmt.Fprintln(os.Stderr, "clientclone: -spawn-timeout must be > 0 and -duration >= 0")
+diff --git a/cmd/clientclone/main_test.go b/cmd/clientclone/main_test.go
+index 4b1cab6..058704e 100644
+--- a/cmd/clientclone/main_test.go
++++ b/cmd/clientclone/main_test.go
+@@ -6,6 +6,7 @@ import (
+ 	"strings"
+ 	"testing"
+ 
++	"github.com/sandertv/gophertunnel/minecraft/protocol"
+ 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
+ )
+ 
+@@ -209,3 +210,45 @@ func TestPacketName(t *testing.T) {
+ 		t.Fatalf("packetName = %q", got)
+ 	}
+ }
++
++// -live-item-registry must accept a server registry that is a superset of the
++// pinned protocol table (Geyser's custom items), but must still reject a
++// missing or remapped pinned item.
++func TestPinnedItemsPresent(t *testing.T) {
++	pinned := []protocol.ItemEntry{
++		{Name: "minecraft:stone", RuntimeID: 1},
++		{Name: "minecraft:oak_planks", RuntimeID: 5},
++	}
++	superset := []protocol.ItemEntry{
++		{Name: "minecraft:stone", RuntimeID: 1},
++		{Name: "minecraft:oak_planks", RuntimeID: 5},
++		{Name: "geyser:custom_block", RuntimeID: 2081},
++	}
++	if !pinnedItemsPresent(superset, pinned) {
++		t.Fatal("superset registry must be accepted")
++	}
++	if pinnedItemsPresent(pinned[:1], pinned) {
++		t.Fatal("missing pinned item must be rejected")
++	}
++	remapped := []protocol.ItemEntry{
++		{Name: "minecraft:stone", RuntimeID: 1},
++		{Name: "minecraft:oak_planks", RuntimeID: 99},
++	}
++	if pinnedItemsPresent(remapped, pinned) {
++		t.Fatal("remapped runtime ID must be rejected")
++	}
++	conflicting := []protocol.ItemEntry{
++		{Name: "minecraft:stone", RuntimeID: 1},
++		{Name: "minecraft:stone", RuntimeID: 2},
++		{Name: "minecraft:oak_planks", RuntimeID: 5},
++	}
++	if pinnedItemsPresent(conflicting, pinned) {
++		t.Fatal("duplicate name with conflicting IDs must be rejected")
++	}
++	if !sameItemIDs(pinned, pinned) {
++		t.Fatal("sameItemIDs exact match must be true")
++	}
++	if sameItemIDs(superset, pinned) {
++		t.Fatal("sameItemIDs must still require equal length")
++	}
++}
+diff --git a/cmd/clientclone/scripts/java-join-2193.jsonl b/cmd/clientclone/scripts/java-join-2193.jsonl
+new file mode 100644
+index 0000000..e8f310f
+--- /dev/null
++++ b/cmd/clientclone/scripts/java-join-2193.jsonl
+@@ -0,0 +1,13 @@
++// Protocol-compatibility probe for the Bedrock -> Java chain.
++// Same chain as java-join.jsonl but the client speaks Bedrock 1.26.50 (2193)
++// instead of 1.26.60 (2225). Used to record which Bedrock protocol versions
++// Geyser 2.12.1-b1302 accepts. Run with -live-item-registry.
++{"cmd":"join","addr":"127.0.0.1:19132","proto":2193,"direct":true}
++{"cmd":"wait","ms":3000}
++{"cmd":"assert","metric":"spawned","op":"==","value":true}
++{"cmd":"assert","metric":"packet_LevelChunk","op":">","value":0}
++{"cmd":"chat","message":"hello from bedrock 1.26.50"}
++{"cmd":"wait","ms":2000}
++{"cmd":"assert","metric":"decode_errors","op":"==","value":0}
++{"cmd":"dump"}
++{"cmd":"quit"}
+diff --git a/cmd/clientclone/scripts/java-join.jsonl b/cmd/clientclone/scripts/java-join.jsonl
+new file mode 100644
+index 0000000..f9f3d15
+--- /dev/null
++++ b/cmd/clientclone/scripts/java-join.jsonl
+@@ -0,0 +1,36 @@
++// Bedrock -> Java (offline, no Xbox) smoke test.
++// Verified 2026-11-12 on BDS-free local chain:
++//   clientclone (self-signed identity, no Xbox, RakNet, proto 2225)
++//     -> Geyser 2.12.1-b1302 (transport=both: RakNet UDP 19132 + NetherNet UDP 19134,
++//        auth-type=offline, advanced.bedrock.validate-bedrock-login=false)
++//     -> ViaProxy 3.4.14 (26.3 <-> 1.21.11) on 127.0.0.1:25566
++//     -> Java 1.21.11 server (online-mode=false) on 127.0.0.1:25565
++// Geyser declares 8 extra custom items, so -live-item-registry is required:
++// item IDs resolve against the server's GameData and item_registry only
++// requires the pinned 2225 table to be a subset.
++//
++// Start order: Java server -> ViaProxy bridge -> Geyser, then:
++//   clientclone -script cmd/clientclone/scripts/java-join.jsonl \
++//     -addr 127.0.0.1:19132 -direct -proto 2225 -live-item-registry \
++//     -duration 30s -v -json dist/clientclone-java-join.json
++{"cmd":"join","addr":"127.0.0.1:19132","proto":2225,"direct":true}
++{"cmd":"wait","ms":3000}
++{"cmd":"assert","metric":"spawned","op":"==","value":true}
++{"cmd":"assert","metric":"packet_LevelChunk","op":">","value":0}
++{"cmd":"chat","message":"hello from offline bedrock client"}
++{"cmd":"look","yaw":0.5,"pitch":0.1}
++{"cmd":"move","x":-3.5,"y":-58.38,"z":3.5}
++{"cmd":"jump"}
++{"cmd":"sneak","on":true}
++{"cmd":"sprint","on":true}
++{"cmd":"wait","ms":1500}
++{"cmd":"sneak","on":false}
++{"cmd":"sprint","on":false}
++{"cmd":"hotbar","slot":3}
++{"cmd":"wait","ms":1500}
++{"cmd":"assert","metric":"auth_input","op":">","value":0}
++{"cmd":"assert","metric":"decode_errors","op":"==","value":0}
++{"cmd":"assert","metric":"send_errors","op":"==","value":0}
++{"cmd":"assert","metric":"unknown_packets","op":"==","value":0}
++{"cmd":"dump"}
++{"cmd":"quit"}
+diff --git a/cmd/clientclone/scripts/java-proto-probe.jsonl b/cmd/clientclone/scripts/java-proto-probe.jsonl
+new file mode 100644
+index 0000000..061dca4
+--- /dev/null
++++ b/cmd/clientclone/scripts/java-proto-probe.jsonl
+@@ -0,0 +1,11 @@
++// Generic Bedrock -> Java protocol compatibility probe.
++// -proto and -name come from the CLI; join deliberately omits both so the
++// same script can sweep 1001 / 2168 / 2169 / 2193 / 2225.
++// Requires -live-item-registry and a distinct -name per run (Geyser keeps a
++// username logged in for a few seconds after disconnect).
++{"cmd":"join","addr":"127.0.0.1:19132","direct":true}
++{"cmd":"wait","ms":2500}
++{"cmd":"assert","metric":"spawned","op":"==","value":true}
++{"cmd":"assert","metric":"decode_errors","op":"==","value":0}
++{"cmd":"dump"}
++{"cmd":"quit"}
+diff --git a/cmd/xvrelay/lan_login_test.go b/cmd/xvrelay/lan_login_test.go
+new file mode 100644
+index 0000000..a3c1790
+--- /dev/null
++++ b/cmd/xvrelay/lan_login_test.go
+@@ -0,0 +1,73 @@
++package main
++
++import (
++	"strings"
++	"testing"
++
++	"github.com/sandertv/gophertunnel/minecraft"
++	"github.com/sandertv/gophertunnel/minecraft/protocol"
++	"github.com/sandertv/gophertunnel/minecraft/protocol/login"
++)
++
++// LAN-255 regression: a Bedrock client joining a NetherNet LAN world puts the
++// world's network ID (a bare decimal uint64) into ClientData.ServerAddress.
++// ClientData.Validate() used to insist on a resolvable host:port and closed the
++// connection right after Login, so discovery/ICE/DTLS/SCTP all succeeded but
++// the player never spawned.
++func validLANClientData(serverAddress string) login.ClientData {
++	return login.ClientData{
++		DeviceOS:          1,
++		GameVersion:       "1.26.60",
++		LanguageCode:      "en_US",
++		ServerAddress:     serverAddress,
++		SkinResourcePatch: "e30=", // base64("{}")
++		SkinID:            "lan-test-skin",
++		UIProfile:         1,
++	}
++}
++
++func TestLANClientDataAcceptsNumericNetworkID(t *testing.T) {
++	if err := validLANClientData("1794498584672418500").Validate(); err != nil {
++		t.Fatalf("numeric LAN network ID rejected: %v", err)
++	}
++}
++
++func TestLANClientDataStillRejectsGarbage(t *testing.T) {
++	err := validLANClientData("not-an-address").Validate()
++	if err == nil {
++		t.Fatal("a malformed ServerAddress must still be rejected")
++	}
++	if !strings.Contains(err.Error(), "ServerAddress") {
++		t.Fatalf("unexpected error: %v", err)
++	}
++}
++
++func TestLANClientDataStillAcceptsHostPort(t *testing.T) {
++	if err := validLANClientData("192.168.1.219:8555").Validate(); err != nil {
++		t.Fatalf("legacy RakNet host:port must remain valid: %v", err)
++	}
++}
++
++// LAN-255 regression: Geyser declares custom blocks in StartGame while keeping
++// runtime IDs unhashed. blocktranslate.New used to hard-fail with "custom block
++// runtime-ID ordering cannot be inferred", killing the session right after a
++// successful login + host dial. Vanilla states must still translate; custom
++// states must be counted as skipped instead of aborting.
++func TestGeyserCustomBlocksDoNotKillCrossVersionSession(t *testing.T) {
++	custom := []protocol.BlockEntry{
++		{Name: "geyser:custom", Properties: map[string]any{"direction": int32(2)}},
++	}
++	s := &session{hostProto: 2225}
++	if err := configureBlockTranslation(s, 2193, minecraft.GameData{
++		UseBlockNetworkIDHashes: false,
++		CustomBlocks:            custom,
++	}); err != nil {
++		t.Fatalf("cross-version session with Geyser custom blocks was killed: %v", err)
++	}
++	if s.blocks == nil || s.reverseBlocks == nil {
++		t.Fatal("both directions must have a mapper")
++	}
++	if s.blocks.SkippedCustom() != len(custom) {
++		t.Errorf("SkippedCustom()=%d, want %d", s.blocks.SkippedCustom(), len(custom))
++	}
++}
+diff --git a/cmd/xvrelay/main.go b/cmd/xvrelay/main.go
+index dc94bbc..e56a2e0 100644
+--- a/cmd/xvrelay/main.go
++++ b/cmd/xvrelay/main.go
+@@ -81,6 +81,7 @@ import (
+ 	"bedrock-cross-version-relay/internal/mcport"
+ 
+ 	"github.com/df-mc/go-nethernet"
++	"github.com/df-mc/go-nethernet/discovery"
+ 	"github.com/google/uuid"
+ 	"github.com/sandertv/gophertunnel/minecraft"
+ 	"github.com/sandertv/gophertunnel/minecraft/protocol"
+@@ -1860,7 +1861,9 @@ func probeTargetsFor(ports []int) []*net.UDPAddr {
+ }
+ 
+ // discoverWorlds opens the discovery socket and waits until a usable LAN world appears.
+-func discoverWorlds(ctx context.Context, timeout time.Duration) (*lansignal.Signaling, error) {
++// ingress carries the LAN-host advertisement settings (Announce/Advertise/Broadcasts)
++// so a -listen-nethernet relay also advertises itself while it looks for its host world.
++func discoverWorlds(ctx context.Context, timeout time.Duration, ingress lansignal.Options) (*lansignal.Signaling, error) {
+ 	localPorts := mcport.Find()
+ 	addr := "0.0.0.0:7551"
+ 	if len(localPorts) > 0 {
+@@ -1869,9 +1872,18 @@ func discoverWorlds(ctx context.Context, timeout time.Duration) (*lansignal.Sign
+ 			"ports", mcport.Describe(localPorts))
+ 	}
+ 	extra := probeTargetsFor(localPorts)
+-	ls, err := lansignal.Listen(lansignal.Options{Addr: addr, Log: slog.Default(), ExtraBroadcasts: extra})
++	opts := lansignal.Options{
++		Addr:            addr,
++		Log:             slog.Default(),
++		ExtraBroadcasts: extra,
++		Announce:        ingress.Announce,
++		Advertise:       ingress.Advertise,
++		Broadcasts:      ingress.Broadcasts,
++	}
++	ls, err := lansignal.Listen(opts)
+ 	if err != nil {
+-		ls, err = lansignal.Listen(lansignal.Options{Addr: "0.0.0.0:0", Log: slog.Default(), ExtraBroadcasts: extra})
++		opts.Addr = "0.0.0.0:0"
++		ls, err = lansignal.Listen(opts)
+ 	}
+ 	if err != nil {
+ 		return nil, fmt.Errorf("listen discovery: %w", err)
+@@ -2804,10 +2816,65 @@ func directWorld(addr string) lansignal.World {
+ 	}
+ }
+ 
++// parseLANTargets turns "255.255.255.255:7551,192.168.1.255:7551" into UDP
++// addresses. An empty list tells lansignal to auto-detect broadcast addresses
++// on every up interface.
++func parseLANTargets(raw string) []*net.UDPAddr {
++	var out []*net.UDPAddr
++	for _, part := range strings.Split(raw, ",") {
++		part = strings.TrimSpace(part)
++		if part == "" {
++			continue
++		}
++		addr, err := net.ResolveUDPAddr("udp4", part)
++		if err != nil {
++			slog.Warn("xvrelay: ignoring invalid -lan-broadcast target", "target", part, "error", err)
++			continue
++		}
++		out = append(out, addr)
++	}
++	return out
++}
++
++// lanWorldCard builds the ServerData shown in the Friends-tab LAN world card.
++// AcceptsSelfSignedAuth=true is mandatory: a Bedrock client that is not signed
++// in to Xbox has no multiplayer token and must fall back to a self-signed JWT.
++// ConnectionType=4 means LAN/NetherNet, as vanilla uses.
++func lanWorldCard(name, level, version string, proto, maxPlayers int, offline bool) *discovery.ServerData {
++	return &discovery.ServerData{
++		ServerName:            name,
++		Protocol:              int32(proto),
++		Version:               version,
++		LevelName:             level,
++		GameType:              discovery.GameTypeSurvival,
++		PlayerCount:           0,
++		MaxPlayerCount:        int32(maxPlayers),
++		EditorWorld:           false,
++		Hardcore:              false,
++		AcceptsOnlineAuth:     !offline,
++		AcceptsSelfSignedAuth: true,
++		Nonce:                 "",
++		ConnectionType:        4,
++	}
++}
++
+ func main() {
+ 	listenAddr := flag.String("listen", "0.0.0.0:19164", "address to listen on for clients (RakNet ingress; ignored with -listen-nethernet)")
+ 	listenNethernet := flag.Bool("listen-nethernet", false,
+ 		"CONN-002: accept clients over NetherNet/WebRTC LAN discovery instead of RakNet. The relay advertises on UDP 7551 through lansignal and reuses it as the signaling backend; -listen is ignored")
++	lanSignalIP := flag.String("lan-signal-ip", "0.0.0.0",
++		"local IPv4 the LAN host binds its signaling socket to. Set it to the REAL LAN IP (e.g. 192.168.1.219) so every ResponsePacket has a joinable source address instead of a WSL/Hyper-V virtual one")
++	lanSignalPort := flag.Int("lan-signal-port", 7551,
++		"UDP port the LAN host announces FROM and receives WebRTC signaling on. Use a port other than 7551 when Overlix already owns 7551, otherwise unicast offers can be delivered to the wrong SO_REUSEADDR socket")
++	lanBroadcast := flag.String("lan-broadcast", "",
++		"comma-separated UDP targets for LAN ResponsePackets, e.g. 255.255.255.255:7551,192.168.1.255:7551 (empty = auto-detect every up interface)")
++	lanName := flag.String("lan-name", "mpmc Java Gateway", "LAN world card: host/server name")
++	lanLevel := flag.String("lan-level", "Java 1.21.11 (Geyser)", "LAN world card: level name")
++	lanProto := flag.Int("lan-proto", 2225, "LAN world card: advertised Bedrock protocol ID")
++	lanVersion := flag.String("lan-version", "1.26.60", "LAN world card: advertised game version")
++	lanMaxPlayers := flag.Int("lan-max-players", 20, "LAN world card: max player count")
++	lanOfflineAuth := flag.Bool("lan-offline-auth", false,
++		"advertise AcceptsOnlineAuth=false so clients with no Xbox account go straight to self-signed login")
+ 	world := flag.String("world", "", "LAN world: level/host NAME (stable across re-opens) or NetworkID (empty = the only world found)")
+ 	timeout := flag.Duration("timeout", 20*time.Second, "how long to scan for LAN worlds")
+ 	trace := flag.Int("trace", 40, "print the first N packet names per direction (0 = off)")
+@@ -2858,6 +2925,27 @@ func main() {
+ 	flag.Parse()
+ 	directHostAddr = *directHost
+ 
++	// LAN-255: with -listen-nethernet this relay IS a LAN host. It must
++	// proactively broadcast a ResponsePacket to .255:7551, otherwise an
++	// offline/no-Xbox Bedrock client (whose Servers tab is disabled) has no
++	// world card to tap.
++	lanTargets := parseLANTargets(*lanBroadcast)
++	lanIngress := lansignal.Options{Announce: *listenNethernet, Broadcasts: lanTargets}
++	if *listenNethernet {
++		lanIngress.Advertise = lanWorldCard(*lanName, *lanLevel, *lanVersion,
++			*lanProto, *lanMaxPlayers, *lanOfflineAuth)
++		slog.Info("xvrelay: LAN world card configured",
++			"name", *lanName, "level", *lanLevel, "protocol", *lanProto,
++			"version", *lanVersion, "signal_ip", *lanSignalIP, "signal_port", *lanSignalPort,
++			"broadcast_targets", func() []string {
++				out := make([]string, 0, len(lanTargets))
++				for _, t := range lanTargets {
++					out = append(out, t.String())
++				}
++				return out
++			}(), "offline_auth", *lanOfflineAuth)
++	}
++
+ 	if *versionFlag {
+ 		fmt.Printf("xvrelay %s\n", buildVersion)
+ 		return
+@@ -2997,11 +3085,24 @@ func main() {
+ 			Addr: "0.0.0.0:0", NoBroadcast: true, Log: slog.Default(),
+ 		}
+ 		if *listenNethernet {
+-			// CONN-002: a NetherNet ingress listener must be discoverable. Clients
+-			// broadcast RequestPackets to UDP 7551 and expect a ResponsePacket
+-			// from that same port, so the socket cannot stay ephemeral/mute even
+-			// though the HOST side is dialled directly over RakNet.
+-			opts = lansignal.Options{Addr: "0.0.0.0:7551", Log: slog.Default()}
++			// CONN-002 + LAN-255: a NetherNet ingress listener must be
++			// discoverable. Clients broadcast RequestPackets to UDP 7551 and
++			// expect a ResponsePacket, and a purely-listening offline client
++			// needs a proactive ResponsePacket broadcast as well.
++			//
++			// Announce FROM a dedicated port (-lan-signal-port, default 7551 but
++			// set to e.g. 8555 when Overlix owns 7551): the client uses the
++			// announcement's SOURCE address as its WebRTC signaling peer. On
++			// Windows two SO_REUSEADDR sockets share broadcast datagrams but NOT
++			// unicast ones, so announcing from 7551 could hand the client's
++			// OFFER to Overlix instead of to us.
++			opts = lansignal.Options{
++				Addr:       fmt.Sprintf("%s:%d", *lanSignalIP, *lanSignalPort),
++				Log:        slog.Default(),
++				Announce:   true,
++				Broadcasts: lanIngress.Broadcasts,
++				Advertise:  lanIngress.Advertise,
++			}
+ 		}
+ 		ls, err = lansignal.Listen(opts)
+ 		if err != nil {
+@@ -3016,7 +3117,7 @@ func main() {
+ 	} else {
+ 		for attempt := 1; ; attempt++ {
+ 			var err error
+-			ls, err = discoverWorlds(ctx, *timeout)
++			ls, err = discoverWorlds(ctx, *timeout, lanIngress)
+ 			if err == nil {
+ 				w, err = pickWorld(ls, *world)
+ 				if err == nil {
+diff --git a/internal/blocktranslate/registry.go b/internal/blocktranslate/registry.go
+index dd41547..711e7d6 100644
+--- a/internal/blocktranslate/registry.go
++++ b/internal/blocktranslate/registry.go
+@@ -237,9 +237,6 @@ func New(source, target int32, hashed bool, custom []protocol.BlockEntry) (*Mapp
+ 	if src == nil || dst == nil {
+ 		return nil, fmt.Errorf("unsupported block registry%d ->%d", source, target)
+ 	}
+-	if !hashed && len(custom) > 0 {
+-		return nil, fmt.Errorf("custom block runtime-ID ordering cannot be inferred")
+-	}
+ 	m := &Mapper{source: src, target: dst, hashed: hashed, ids: map[uint32]uint32{}, targetProto: target}
+ 	fallbackKey, _ := mapping.StateKey("minecraft:info_update", nil)
+ 	fallback, ok := dst.byKey[fallbackKey]
+@@ -279,6 +276,22 @@ func New(source, target int32, hashed bool, custom []protocol.BlockEntry) (*Mapp
+ 		m.ids[in] = out
+ 	}
+ 	skippedCustom := 0
++	if !hashed && len(custom) > 0 {
++		// A Java->Bedrock bridge (Geyser) appends custom block states to
++		// StartGame while keeping runtime IDs unhashed. Their runtime-ID
++		// ordering cannot be inferred from the declarations: the old code
++		// aborted the WHOLE session here ("custom block runtime-ID ordering
++		// cannot be inferred"), right after a successful login + host dial.
++		//
++		// Vanilla states occupy the low runtime IDs and are still translated
++		// exactly by the loop above. Custom IDs are simply absent from m.ids,
++		// so Map() returns the visible info_update placeholder for them. The
++		// session survives; custom blocks are rendered as info_update until a
++		// proper runtime-ID table is available. This is a measured degradation,
++		// not a silent wrong mapping.
++		skippedCustom += len(custom)
++		custom = nil
++	}
+ 	for _, entry := range custom {
+ 		hash, err := StateHash(entry.Name, entry.Properties)
+ 		if err != nil {
+diff --git a/internal/lansignal/announce_test.go b/internal/lansignal/announce_test.go
+new file mode 100644
+index 0000000..095c23c
+--- /dev/null
++++ b/internal/lansignal/announce_test.go
+@@ -0,0 +1,130 @@
++package lansignal
++
++import (
++	"bytes"
++	"io"
++	"log/slog"
++	"net"
++	"testing"
++	"time"
++
++	"github.com/df-mc/go-nethernet/discovery"
++)
++
++// LAN-255: a host must BROADCAST a ResponsePacket, not merely answer a
++// RequestPacket. An offline/no-Xbox Bedrock client listens on 7551 and never
++// gets a world card if only replyRequest exists.
++func TestAnnounceBroadcastsResponsePacket(t *testing.T) {
++	log := slog.New(slog.NewTextHandler(io.Discard, nil))
++
++	// Observer stands in for a Bedrock client listening on the discovery port.
++	observer, err := net.ListenPacket("udp4", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = observer.Close() })
++	dst := observer.LocalAddr().(*net.UDPAddr)
++
++	card := &discovery.ServerData{
++		ServerName:            "mpmc Java",
++		Protocol:              2225,
++		Version:               "1.26.60",
++		LevelName:             "Java 1.21.11 via Geyser",
++		GameType:              discovery.GameTypeSurvival,
++		PlayerCount:           0,
++		MaxPlayerCount:        20,
++		AcceptsOnlineAuth:     true,
++		AcceptsSelfSignedAuth: true,
++		ConnectionType:        4,
++	}
++	s, err := Listen(Options{
++		Addr:        "127.0.0.1:0",
++		NoBroadcast: true,
++		Announce:    true,
++		Broadcasts:  []*net.UDPAddr{dst},
++		Advertise:   card,
++		Log:         log,
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = s.Close() })
++
++	// A gophertunnel listener pushes its own pong every 4 s. A pinned
++	// advertisement must survive it, otherwise the world card would flip back
++	// to the listener's generic identity mid-session.
++	s.PongData([]byte("MCPE;Generic;765;1.21.1;0;20;1;Other World;Survival;1;19132;19132;0,0;"))
++
++	if err := observer.SetReadDeadline(time.Now().Add(2 * time.Second)); err != nil {
++		t.Fatal(err)
++	}
++	buf := make([]byte, 65535)
++	n, _, err := observer.ReadFrom(buf)
++	if err != nil {
++		t.Fatalf("no LAN announcement received: %v", err)
++	}
++	pk, senderID, err := discovery.Unmarshal(buf[:n])
++	if err != nil {
++		t.Fatalf("announcement is not a valid discovery packet: %v", err)
++	}
++	if senderID != s.networkID {
++		t.Fatalf("sender ID = %d, want our network ID %d", senderID, s.networkID)
++	}
++	resp, ok := pk.(*discovery.ResponsePacket)
++	if !ok {
++		t.Fatalf("packet is %T, want *discovery.ResponsePacket", pk)
++	}
++	got := &discovery.ServerData{}
++	if err := got.UnmarshalBinary(resp.ApplicationData); err != nil {
++		t.Fatalf("ResponsePacket carries undecodable ServerData: %v", err)
++	}
++	if got.ServerName != card.ServerName || got.LevelName != card.LevelName {
++		t.Errorf("card identity = %q/%q, want %q/%q", got.ServerName, got.LevelName, card.ServerName, card.LevelName)
++	}
++	if got.Protocol != card.Protocol || got.Version != card.Version {
++		t.Errorf("card protocol = %d/%q, want %d/%q", got.Protocol, got.Version, card.Protocol, card.Version)
++	}
++	if !got.AcceptsSelfSignedAuth {
++		t.Error("AcceptsSelfSignedAuth=false: an offline/no-Xbox client cannot join")
++	}
++	if got.ConnectionType != 4 {
++		t.Errorf("ConnectionType=%d, want 4 (LAN/NetherNet)", got.ConnectionType)
++	}
++
++	// The pinned bytes must be byte-identical to what SetAdvertisement stored.
++	want, _ := card.MarshalBinary()
++	if !bytes.Equal(resp.ApplicationData, want) {
++		t.Error("announcement ServerData was overwritten by the listener's pong")
++	}
++}
++
++// Announce is opt-in: a plain discovery client must not start advertising a
++// world, otherwise every joiner would show up as a bogus LAN world.
++func TestNoAnnounceByDefault(t *testing.T) {
++	log := slog.New(slog.NewTextHandler(io.Discard, nil))
++	observer, err := net.ListenPacket("udp4", "127.0.0.1:0")
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = observer.Close() })
++
++	s, err := Listen(Options{
++		Addr:        "127.0.0.1:0",
++		NoBroadcast: true,
++		Broadcasts:  []*net.UDPAddr{observer.LocalAddr().(*net.UDPAddr)},
++		Advertise:   &discovery.ServerData{ServerName: "Should not appear", ConnectionType: 4},
++		Log:         log,
++	})
++	if err != nil {
++		t.Fatal(err)
++	}
++	t.Cleanup(func() { _ = s.Close() })
++
++	if err := observer.SetReadDeadline(time.Now().Add(300 * time.Millisecond)); err != nil {
++		t.Fatal(err)
++	}
++	buf := make([]byte, 65535)
++	if _, _, err := observer.ReadFrom(buf); err == nil {
++		t.Fatal("a non-announcing Signaling emitted a discovery packet")
++	}
++}
+diff --git a/internal/lansignal/lansignal.go b/internal/lansignal/lansignal.go
+index bb09023..c9649db 100644
+--- a/internal/lansignal/lansignal.go
++++ b/internal/lansignal/lansignal.go
+@@ -83,10 +83,20 @@ type Signaling struct {
+ 	peersMu sync.RWMutex
+ 	peers   map[uint64]*World
+ 
+-	// pongData is the ServerData we answer other clients' requests with. It is
+-	// optional: without it we still discover peers, we simply never advertise.
++	// pongData is the ServerData we answer other clients' requests and broadcast
++	// announcements with. It is optional: without it we still discover peers, we
++	// simply never advertise.
+ 	pongData atomic.Pointer[[]byte]
+ 
++	// advertise pins pongData to a caller-supplied ServerData. A gophertunnel
++	// listener refreshes its MCPE pong every 4 seconds through PongData(); a LAN
++	// host that wants a deterministic world card must not be overwritten by it.
++	advertise atomic.Pointer[[]byte]
++
++	// noBroadcast suppresses the RequestPacket broadcastLoop. The same
++	// broadcasts list is still needed by announceLoop when Announce is set.
++	noBroadcast bool
++
+ 	notifiersMu sync.RWMutex
+ 	notifiers   map[uint32]nethernet.Notifier
+ 	notifyCount uint32
+@@ -112,9 +122,28 @@ type Options struct {
+ 	Log *slog.Logger
+ 	// NoBroadcast disables sending our own RequestPackets. Useful when another
+ 	// process already holds 7551 and we only want to observe its traffic.
++	// It does NOT disable Announce.
+ 	NoBroadcast bool
+-	// ExtraBroadcasts are additional destinations for RequestPackets.
++	// ExtraBroadcasts are additional destinations for RequestPackets and
++	// ResponsePacket announcements.
+ 	ExtraBroadcasts []*net.UDPAddr
++
++	// Announce makes this Signaling behave like a LAN HOST: every
++	// broadcastInterval it sends a ResponsePacket carrying pongData/Advertise
++	// to every broadcast destination. Without it the Signaling only ANSWERS a
++	// RequestPacket, so a client that merely listens on 7551 never sees a
++	// world card. This is required for Bedrock clients that are not signed in
++	// to Xbox (they rely on the Friends-tab LAN list, not the Servers tab).
++	Announce bool
++	// Advertise pins the ServerData used in ResponsePackets. When non-nil it
++	// overrides (and locks out) the MCPE pong a gophertunnel listener pushes
++	// through PongData every few seconds.
++	Advertise *discovery.ServerData
++	// Broadcasts, when non-empty, REPLACES the auto-detected broadcast
++	// destination list. Use it to announce only on the real LAN interface,
++	// e.g. 255.255.255.255:7551 and 192.168.1.255:7551, instead of also
++	// emitting cards from virtual WSL/Hyper-V interfaces.
++	Broadcasts []*net.UDPAddr
+ }
+ 
+ // networkIDSeed guarantees unique network IDs for Signaling instances created
+@@ -148,39 +177,66 @@ func Listen(opts Options) (*Signaling, error) {
+ 
+ 	conn, err := net.ListenPacket("udp4", opts.Addr)
+ 	if err != nil {
+-		return nil, fmt.Errorf("bind %s: %w", opts.Addr, err)
++		// Overlix (and the game itself) often owns 0.0.0.0:7551 without
++		// SO_EXCLUSIVEADDRUSE. On Windows a second SO_REUSEADDR socket can bind
++		// the same port and still receives every broadcast datagram, so a LAN
++		// host can coexist with it instead of failing to start. Broadcasts are
++		// delivered to both sockets; Overlix is left completely untouched.
++		if shared, sharedErr := listenShared(opts.Addr); sharedErr == nil {
++			conn, err = shared, nil
++			opts.Log.Info("lansignal: primary bind busy, using shared SO_REUSEADDR socket",
++				"addr", opts.Addr)
++		} else {
++			return nil, fmt.Errorf("bind %s: %w (shared socket: %v)", opts.Addr, err, sharedErr)
++		}
+ 	}
+ 
+ 	local, _ := conn.LocalAddr().(*net.UDPAddr)
+ 	s := &Signaling{
+-		conn:      conn,
+-		networkID: nextNetworkID(),
+-		log:       opts.Log,
+-		peers:     make(map[uint64]*World),
+-		notifiers: make(map[uint32]nethernet.Notifier),
+-		closed:    make(chan struct{}),
+-	}
+-
+-	if !opts.NoBroadcast {
+-		// Broadcast to both the limited broadcast address and the subnet-directed
+-		// one: Windows routes them differently and a host may only answer one.
+-		s.broadcasts = []*net.UDPAddr{{IP: net.IPv4bcast, Port: DefaultPort}}
+-		if local != nil {
+-			if ip := local.IP.To4(); ip != nil && !ip.IsUnspecified() {
+-				s.broadcasts = append(s.broadcasts, &net.UDPAddr{
+-					IP:   net.IPv4(ip[0], ip[1], ip[2], 255),
+-					Port: DefaultPort,
+-				})
++		conn:        conn,
++		networkID:   nextNetworkID(),
++		log:         opts.Log,
++		noBroadcast: opts.NoBroadcast,
++		peers:       make(map[uint64]*World),
++		notifiers:   make(map[uint32]nethernet.Notifier),
++		closed:      make(chan struct{}),
++	}
++
++	if !opts.NoBroadcast || opts.Announce {
++		if len(opts.Broadcasts) > 0 {
++			// Explicit list: announce ONLY on the interfaces the caller wants.
++			s.broadcasts = append(s.broadcasts, opts.Broadcasts...)
++		} else {
++			// Broadcast to both the limited broadcast address and the subnet-directed
++			// one: Windows routes them differently and a host may only answer one.
++			s.broadcasts = []*net.UDPAddr{{IP: net.IPv4bcast, Port: DefaultPort}}
++			if local != nil {
++				if ip := local.IP.To4(); ip != nil && !ip.IsUnspecified() {
++					s.broadcasts = append(s.broadcasts, &net.UDPAddr{
++						IP:   net.IPv4(ip[0], ip[1], ip[2], 255),
++						Port: DefaultPort,
++					})
++				}
++			}
++			for _, ip := range interfaceBroadcasts() {
++				s.broadcasts = append(s.broadcasts, &net.UDPAddr{IP: ip, Port: DefaultPort})
+ 			}
+-		}
+-		for _, ip := range interfaceBroadcasts() {
+-			s.broadcasts = append(s.broadcasts, &net.UDPAddr{IP: ip, Port: DefaultPort})
+ 		}
+ 		s.broadcasts = append(s.broadcasts, opts.ExtraBroadcasts...)
+ 	}
+ 
++	if opts.Advertise != nil {
++		if err := s.SetAdvertisement(opts.Advertise); err != nil {
++			_ = conn.Close()
++			return nil, err
++		}
++	}
++
+ 	go s.readLoop()
+ 	go s.broadcastLoop()
++	if opts.Announce {
++		go s.announceLoop()
++	}
+ 	go s.expireLoop()
+ 	// ★ Also listen on port 7551 through a SO_REUSEADDR socket. Needed when we have to bind an
+ 	// ephemeral port because the host application already holds 7551: such a world does NOT answer
+@@ -250,6 +306,12 @@ func (s *Signaling) NetworkID() string {
+ // A LAN ResponsePacket carries BINARY ServerData, not the MCPE string, so the
+ // former has to be converted here or LAN clients cannot display this server.
+ func (s *Signaling) PongData(b []byte) {
++	// A pinned LAN advertisement wins. gophertunnel refreshes its MCPE pong
++	// every 4 seconds; without this guard the world card would silently revert
++	// to the listener's generic name/protocol mid-session.
++	if s.advertise.Load() != nil {
++		return
++	}
+ 	var raw []byte
+ 	if strings.HasPrefix(string(b), "MCPE;") {
+ 		converted, err := serverDataFromPong(b)
+@@ -264,6 +326,23 @@ func (s *Signaling) PongData(b []byte) {
+ 	s.pongData.Store(&raw)
+ }
+ 
++// SetAdvertisement pins the ServerData used for LAN ResponsePackets, both the
++// proactive announcement and the unicast reply to a RequestPacket. It is what
++// a LAN host uses to give the world card a stable name, protocol and version
++// instead of the generic MCPE pong a gophertunnel listener produces.
++func (s *Signaling) SetAdvertisement(d *discovery.ServerData) error {
++	if d == nil {
++		return fmt.Errorf("nil ServerData")
++	}
++	raw, err := d.MarshalBinary()
++	if err != nil {
++		return fmt.Errorf("marshal LAN ServerData: %w", err)
++	}
++	s.advertise.Store(&raw)
++	s.pongData.Store(&raw)
++	return nil
++}
++
+ // serverDataFromPong converts gophertunnel's MCPE pong line into the binary
+ // ServerData payload a LAN ResponsePacket expects. This mirrors the parsing in
+ // go-nethernet/discovery.Listener.PongData, but also carries Protocol, Version
+@@ -697,7 +776,7 @@ func (s *Signaling) deliver(signal *nethernet.Signal) {
+ // broadcastLoop periodically sends RequestPackets so hosts that *do* listen on
+ // 7551 answer us, complementing the passive discovery of announcing hosts.
+ func (s *Signaling) broadcastLoop() {
+-	if len(s.broadcasts) == 0 {
++	if s.noBroadcast || len(s.broadcasts) == 0 {
+ 		return
+ 	}
+ 	pk := discovery.Marshal(&discovery.RequestPacket{}, s.networkID)
+@@ -727,6 +806,52 @@ func (s *Signaling) broadcastLoop() {
+ 	}
+ }
+ 
++// announceLoop proactively advertises this Signaling as a LAN WORLD.
++//
++// A vanilla Bedrock host broadcasts a ResponsePacket (id 1) carrying binary
++// ServerData to 255.255.255.255:7551 and to the subnet-directed broadcast every
++// couple of seconds. Clients LISTEN on 7551 and render a world card in the
++// Friends tab from those announcements. replying to a RequestPacket alone is
++// NOT equivalent: an offline/no-Xbox client can be pure listener, and the
++// Servers tab is disabled for it, so without this loop it never sees a world.
++//
++// Only enabled through Options.Announce; existing callers keep their old
++// "discover other worlds" behaviour untouched.
++func (s *Signaling) announceLoop() {
++	if len(s.broadcasts) == 0 {
++		return
++	}
++	ticker := time.NewTicker(broadcastInterval)
++	defer ticker.Stop()
++
++	send := func() {
++		data := s.pongData.Load()
++		if data == nil || len(*data) == 0 {
++			return // no ServerData yet; the listener may not have called PongData
++		}
++		pk := discovery.Marshal(&discovery.ResponsePacket{ApplicationData: *data}, s.networkID)
++		for _, dst := range s.broadcasts {
++			if _, err := s.conn.WriteTo(pk, dst); err != nil {
++				select {
++				case <-s.closed:
++					return
++				default:
++				}
++				s.log.Debug("lansignal: announce failed", "dst", dst, "error", err)
++			}
++		}
++	}
++	send() // announce immediately; do not make the client wait a full tick
++	for {
++		select {
++		case <-s.closed:
++			return
++		case <-ticker.C:
++			send()
++		}
++	}
++}
++
+ // expireLoop drops peers that have gone quiet.
+ func (s *Signaling) expireLoop() {
+ 	ticker := time.NewTicker(time.Second)
+diff --git a/internal/lansignal/shared_read.go b/internal/lansignal/shared_read.go
+index 3493e4f..9687313 100644
+--- a/internal/lansignal/shared_read.go
++++ b/internal/lansignal/shared_read.go
+@@ -61,6 +61,12 @@ func (s *Signaling) readSharedLoop() {
+ 		switch pk := pk.(type) {
+ 		case *discovery.RequestPacket:
+ 			s.record(senderID, addr, func(w *World) { w.Announced = true })
++			// Answer from the dedicated signalling socket (s.conn), NOT from
++			// this shared 7551 socket. The client uses the SOURCE address of
++			// the ResponsePacket as its signalling peer; replying from 7551
++			// would send WebRTC offers to a port Overlix also owns, and on
++			// Windows SO_REUSEADDR unicast is delivered to only one socket.
++			s.replyRequest(addr)
+ 		case *discovery.ResponsePacket:
+ 			raw := append([]byte(nil), pk.ApplicationData...)
+ 			host, hostErr := DecodeHostInfo(raw)
+diff --git a/third_party/gophertunnel-2225/minecraft/protocol/login/data.go b/third_party/gophertunnel-2225/minecraft/protocol/login/data.go
+index 22ce34c..91b5b3a 100644
+--- a/third_party/gophertunnel-2225/minecraft/protocol/login/data.go
++++ b/third_party/gophertunnel-2225/minecraft/protocol/login/data.go
+@@ -378,7 +378,14 @@ func (data ClientData) Validate() error {
+ 			return fmt.Errorf("ServerAddress is invalid: %v", data.ServerAddress)
+ 		}
+ 	} else if _, err := net.ResolveUDPAddr("udp", data.ServerAddress); err != nil {
+-		return fmt.Errorf("ServerAddress must be resolveable as a UDP address, but got %v", data.ServerAddress)
++		// A NetherNet LAN world is addressed by its network ID: a bare decimal
++		// uint64, not a host:port. Bedrock clients joining a world from the
++		// Friends tab put that ID in ServerAddress. Rejecting it here used to
++		// close every LAN connection right after the Login packet, even though
++		// discovery, signaling, ICE, DTLS and SCTP had all succeeded.
++		if _, numErr := strconv.ParseUint(data.ServerAddress, 10, 64); numErr != nil {
++			return fmt.Errorf("ServerAddress must be resolveable as a UDP address, but got %v", data.ServerAddress)
++		}
+ 	}
+ 	if err := base64DecLength(data.SkinData, data.SkinImageHeight*data.SkinImageWidth*4); err != nil {
+ 		return fmt.Errorf("SkinData is invalid: %w", err)

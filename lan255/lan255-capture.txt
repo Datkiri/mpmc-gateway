@@ -1,0 +1,13 @@
+CAPTURE duration=8.0s host=192.168.1.219 udp7551_packets=110
+--- flows (src, sport -> dst, dport) ---
+  192.168.1.219         :8554   -> 192.168.1.255         :7551   count=52
+  192.168.1.219         :8554   -> 192.168.1.219         :7551   count=26
+  192.168.1.219         :8555   -> 255.255.255.255       :7551   count=16
+  192.168.1.219         :8555   -> 192.168.1.255         :7551   count=16
+--- decoded discovery packets ---
+  192.168.1.219:8554 -> 192.168.1.219:7551 : {'packet_id': 0, 'sender_id': 8381740698543500254}
+  192.168.1.219:8554 -> 192.168.1.255:7551 : {'packet_id': 0, 'sender_id': 8381740698543500254}
+  192.168.1.219:8555 -> 255.255.255.255:7551 : {'packet_id': 1, 'sender_id': 1794501360287812900, 'server_data': {'server_data_version': 7, 'server_name': 'mpmc-Java-Gateway', 'protocol': 2225, 'version': '1.26.60', 'level_name': 'mpmc-Java-1.21.11', 'player_count': 0, 'max_player_count': 20, 'game_type': 0, 'editor_world': False, 'hardcore': False, 'accepts_online_auth': False, 'accepts_self_signed_auth': True, 'nonce': '', 'connection_type': 4, 'unread': 0}, 'unread': 0}
+  192.168.1.219:8555 -> 192.168.1.255:7551 : {'packet_id': 1, 'sender_id': 1794501360287812900, 'server_data': {'server_data_version': 7, 'server_name': 'mpmc-Java-Gateway', 'protocol': 2225, 'version': '1.26.60', 'level_name': 'mpmc-Java-1.21.11', 'player_count': 0, 'max_player_count': 20, 'game_type': 0, 'editor_world': False, 'hardcore': False, 'accepts_online_auth': False, 'accepts_self_signed_auth': True, 'nonce': '', 'connection_type': 4, 'unread': 0}, 'unread': 0}
+--- verdict ---
+limited_broadcast_255=16 subnet_directed_255=68

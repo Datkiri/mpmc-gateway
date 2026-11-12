@@ -1026,7 +1026,10 @@ Không đánh dấu PASS cho phần này.
 - Chỉ một máy: chưa test hai máy khác mạng/NAT với relay TLS thật cho luồng Bedrock.
 - Chưa test client Java chính thức có đăng nhập Microsoft; bot dùng offline auth.
 - Chỉ đích `Bedrock 1.26.51`; chưa hỗ trợ 1.26.60/2225 hay bridge nhiều phiên bản Bedrock.
-- Chưa hỗ trợ chiều ngược lại (client Bedrock vào server Java) và chưa hỗ trợ client Bedrock gốc.
+- Chiều ngược lại (client Bedrock vào server Java, không tài khoản Xbox) **đã dựng và đo thật**
+  bằng `clientclone` → Geyser + ViaProxy → Java 1.21.11 (mục 10). Vẫn **chưa** hỗ trợ client Bedrock
+  đồ hoạ gốc / NetherNet, và phần này là thiết lập lab ngoài agent, không nằm trong
+  `mpmc-agent-*.zip`.
 - Lỗi `RESPAWN` khi `ChangeDimension` và lỗi kẹt `y ≈ 32768` **đã sửa** ở bản `mpmc.3` (mục 5.1,
   5.3); trên BDS RakNet mọi phiên có kiểm tra toạ độ đều spawn đúng `y = -60` ngay lần đầu (kể cả
   client 1.21.6). Cờ `--ignore-protocol-translation-errors` vẫn bật như lưới an toàn chung nhưng
@@ -1079,3 +1082,185 @@ Không đánh dấu PASS cho phần này.
 | Không tự viết transport | Vẫn iroh + iroh-relay; RakNet/NetherNet do ViaProxy/BDS xử lý |
 | Không copy GPL/AGPL | Không nhúng/link mã GPL vào mpmc; gateway là tiến trình GPL riêng, build ngoài zip, cài từ hash đã pin |
 | Không số liệu bịa | Mọi số ở mục 5 lấy từ log test thật; phần chưa đo ghi rõ "chưa xác minh" |
+
+## 10. Chiều ngược: client Bedrock không Xbox → server Java (2026-11-12)
+
+Thiết lập **lab tách biệt**, không thuộc `mpmc-agent-*.zip`. Mục tiêu: chứng minh client Bedrock
+terminal tự ký (không tài khoản Xbox) vào được server Java offline, dịch gói tin hai chiều sạch.
+
+### 10.1 Chuỗi đã chạy thật
+
+```text
+clientclone (Go, terminal, self-signed, RakNet, proto 2225)
+  -> Geyser 2.12.1-b1302   UDP RakNet 127.0.0.1:19132 (transport=both),
+                           NetherNet UDP 19134, auth-type=offline,
+                           advanced.bedrock.validate-bedrock-login=false
+  -> ViaProxy 3.4.14       TCP 127.0.0.1:25566, [26.3 <-> 1.21.11]
+  -> Java 1.21.11 server   TCP 127.0.0.1:25565, online-mode=false
+```
+
+### 10.2 Các chướng ngại đã đo và cách xử lý
+
+| Triệu chứng đo được | Nguyên nhân | Xử lý |
+|---|---|---|
+| `transport: raknet` → `WARNING! Raknet-only transport has now been REMOVED`, Geyser ép sang NetherNet; loopback `127.0.0.1` làm STUN timeout, `Send failed errno=10051` | Geyser 2.12.1 bỏ RakNet-only | `transport: both`: comment trong `config.yml` xác nhận **RakNet vẫn nghe UDP `port` (19132)**, NetherNet dùng `webrtc-port` |
+| `transport: both` chết lúc init: `AssertionError: Unable to fetch discovery data … SocketTimeoutException` | mạng nhất thời tới `client.discovery.minecraft-services.net`; đo lại `HTTP=200 0.9s` | khởi động lại; không phải giới hạn cố định |
+| `Please log into Xbox to join this server.` | `auth-type: offline` chỉ bỏ auth **phía Java**; Geyser vẫn verify chuỗi JWT Bedrock | `advanced.bedrock.validate-bedrock-login: false`. Geyser in `XBOX AUTHENTICATION IS DISABLED` — rủi ro spoof username, **chỉ chấp nhận vì bind loopback** |
+| `This server does not support Java Edition 26.3 … Incompatible client! Please use 1.21.11` | Geyser 2.12.1 nói Java **26.3**, server lab là **1.21.11** | ViaProxy làm cầu `[26.3 <-> 1.21.11]`. Không tải server 26.3 vì manifest Mojang ghi `javaVersion.majorVersion=25` mà máy chỉ có JDK 21 |
+| `UDP [::1]:19133` đã bị `Overlix.exe` (PID 16792) giữ | xung đột cổng NetherNet | `webrtc-port: 19134`; tắt `stun-discovery`, `advertise-addresses: ["127.0.0.1"]` |
+| `2088 GameData entries vs 2080 pinned 2225 entries`, `1 ITEM_UNKNOWN_ID` | Geyser chèn **8 custom item** | `clientclone -live-item-registry` (xem 10.4) |
+
+### 10.3 Bằng chứng 3 tầng (log thật)
+
+- `clientclone`: `EXIT=0`, `ok=true`, **12/12 assertion OK**, `spawned=true`, 118 `LevelChunk`,
+  120 `PlayerAuthInput`, 2287 item stack decode, `decode_errors=0`, `send_errors=0`,
+  `unknown_packets=0`, `items_unknown=0`, `registry_match=true`, `world_name=Geyser`.
+  Lệnh mở rộng gồm `chat`, `look`, `move`, `jump`, `sneak`, `sprint`, `hotbar`: 21/21 lệnh OK.
+- Java server `_m5/server/logs/latest.log`: `ClientClone logged in with entity id 6`,
+  `ClientClone joined the game`, `[Not Secure] <ClientClone> hello from offline bedrock client`,
+  rồi `left the game` sạch.
+- ViaProxy `viaproxy-bridge/viaproxy.log`: `[CONNECT] [26.3 <-> 1.21.11]`,
+  `Filling player data` → `CONFIGURATION state` → `PLAY state` → `[DISCONNECT] Connection closed`,
+  **0** exception.
+- Geyser `geyser-viaproxy.log`: `Player connected with username ClientClone (2225)`,
+  `has connected to remote java server`. Disconnect sau `quit` là
+  `Bedrock client timed out` (Geyser giữ session vài giây) — không phải lỗi dịch.
+
+### 10.4 Ranh giới phiên bản Bedrock (đo bằng `java-proto-probe.jsonl`)
+
+| `-proto` | Bedrock | Kết quả |
+|---|---|---|
+| 2168 | 26.44 | `ok=true` (tên `Probe2168b`; lần đầu trùng `already logged in` do session trước chưa dọn) |
+| 2169 | 26.45 | `ok=true` |
+| 2193 | 26.50 | `ok=true` |
+| 2225 | 26.60 | `ok=true` |
+| 1001 | 26.30 | Bị từ chối: `Outdated Bedrock client! … 26.40, 26.41, 26.42, 26.43, 26.44, 26.45, 26.50, 26.51, 26.52, 26.60, 26.61, 26.62, 26.63` |
+
+Geyser khai báo registry **lớn hơn** bảng chuẩn: 2225 → 2088/2080, 2193 → 2084/2076,
+2168/2169 → 1984. Vì vậy `clientclone` có cờ `-live-item-registry` (**mặc định tắt**, hành vi
+BDS/relay cũ không đổi): resolve ID theo `GameData.Items` của server, và `item_registry` dùng
+`pinnedItemsPresent` — yêu cầu mọi item chuẩn hiện diện với đúng runtime ID, cho phép item
+custom của server, vẫn từ chối item thiếu / đổi ID / tên trùng ID khác. Có unit test
+`TestPinnedItemsPresent`. `go test -buildvcs=false ./cmd/clientclone/...` PASS.
+
+### 10.5 Còn `[Chưa xác minh]` / rủi ro
+
+- §10.1 chạy loopback một máy; riêng **NetherNet/WebRTC đã test thật** ở §10.7 qua
+  `xvrelay -listen-nethernet` + LAN discovery trên IP LAN `192.168.1.219` (vẫn cùng một máy,
+  chưa có thiết bị thứ hai). **Client Bedrock đồ hoạ gốc / thiết bị LAN khác: [Chưa xác minh]**.
+- Chưa test **client Bedrock đồ hoạ gốc**; `clientclone` là terminal client tự ký, `joiner_new.exe`
+  cũng là client terminal (không có codec 2225 cho đường NetherNet).
+- Chưa test đặt block / inventory / tương tác entity ở chiều ngược; smoke mới cover join, chat,
+  look, move, jump, sneak, sprint, hotbar.
+- Chưa có codec cho 26.61/26.62/26.63 trong `clientclone` ⇒ chưa đo 3 bản Geyser hỗ trợ đó.
+- `validate-bedrock-login=false` **không dùng cho production/public**: cho phép spoof username.
+  Chỉ an toàn vì `bedrock.address: 127.0.0.1`.
+- Geyser + ViaProxy là **tiến trình ngoài**, không nhúng vào agent, không có trong
+  `mpmc-agent-*.zip`; giữ nguyên ranh giới GPL ở §6/§9.
+
+### 10.6 File / lệnh tái dựng
+
+```text
+_m6/geyser/Geyser-Standalone.jar   SHA ccafefeb…  2.12.1-b1302
+_m6/geyser/config.yml              transport=both, webrtc-port=19134, auth-type=offline,
+                                   validate-bedrock-login=false, java.port=25566
+_m6/geyser/viaproxy-bridge/        working dir riêng của ViaProxy, log viaproxy.log
+_m6/geyser/geyser-viaproxy.log     log Geyser
+_m5/server/logs/latest.log         log Java 1.21.11
+bedrock-cross-version-relay/cmd/clientclone/scripts/
+    java-join.jsonl                smoke chính (2225)
+    java-join-2193.jsonl           smoke 2193
+    java-proto-probe.jsonl         probe đa protocol (join không hard-code proto)
+bedrock-cross-version-relay/dist/clientclone-java-join.json   report ok=true
+bedrock-cross-version-relay/dist/clientclone-java-2193.json   report ok=true
+```
+
+Thứ tự khởi động: Java server → ViaProxy bridge → Geyser → `clientclone`. Lệnh:
+
+```bash
+# tại _m6/geyser/viaproxy-bridge, jar lấy từ _m6/gw-data/gateway/ViaProxy-3.4.14.jar
+java -jar ViaProxy-3.4.14.jar cli --bind-address 127.0.0.1:25566 \
+  --target-address 127.0.0.1:25565 --proxy-online-mode false --chat-signing false
+# tại _m6/geyser
+java -jar Geyser-Standalone.jar
+# tại bedrock-cross-version-relay
+./dist/clientclone.exe -script cmd/clientclone/scripts/java-join.jsonl \
+  -addr 127.0.0.1:19132 -direct -proto 2225 -live-item-registry \
+  -duration 30s -v -json dist/clientclone-java-join.json
+```
+
+Ghi chú: probe đa protocol cần `-name` khác nhau mỗi lần (Geyser giữ username vài giây sau
+disconnect), và `-live-item-registry`.
+
+### 10.7 LAN world card broadcast ra `.255` cho client không Xbox (2026-11-12, 23:36)
+
+Yêu cầu: *"Bạn phải bật boardcast ra 255 nữa để tôi join vì client ko login xbox thì cái
+join server ở menu ko phát sáng"*. Client không đăng nhập Xbox chỉ thấy world LAN qua thẻ
+**Friends tab**; nếu host chỉ trả lời `RequestPacket` thì client thuần listener không bao giờ
+thấy world. `xvrelay -listen-nethernet` phải **chủ động phát `ResponsePacket`** như host vanilla.
+
+```text
+client Bedrock LAN (self-signed, không Xbox)
+  -> UDP 7551 discovery: ResponsePacket broadcast 255.255.255.255 / 192.168.1.255
+  -> signaling UDP 192.168.1.219:8555 (CONNECTREQUEST/CONNECTRESPONSE)
+  -> WebRTC/ICE/DTLS/SCTP (port ephemeral, rule firewall theo program xvrelay.exe)
+  -> xvrelay -listen-nethernet -host-raknet 127.0.0.1:19132   [client 2193 <-> host 2225]
+  -> Geyser 2.12.1 (UDP RakNet 19132) -> ViaProxy 25566 -> Java 1.21.11 25565
+```
+
+Lệnh chạy cuối (còn sống, PID 18868 → bản restart 23:36):
+
+```bash
+./dist/xvrelay.exe -listen-nethernet -host-raknet 127.0.0.1:19132 \
+  -lan-signal-ip 192.168.1.219 -lan-signal-port 8555 \
+  -lan-broadcast "255.255.255.255:7551,192.168.1.255:7551" \
+  -lan-name mpmc-Java-Gateway -lan-level mpmc-Java-1.21.11 \
+  -lan-proto 2225 -lan-version 1.26.60 -lan-offline-auth \
+  -client-proto auto -host-proto 2225 -trace 20
+```
+
+Thay đổi source (repo `bedrock-cross-version-relay`, commit local, chưa push):
+
+| File | Thay đổi |
+|---|---|
+| `internal/lansignal/lansignal.go` | `Options.Announce` / `Advertise` / `Broadcasts`; `SetAdvertisement()` pin binary `ServerData`, chặn `PongData()` ghi đè; `announceLoop()` phát `ResponsePacket` mỗi 2 s; `listenShared()` + `SO_REUSEADDR` để chia sẻ 7551 với Overlix (PID 20844) mà không kill nó |
+| `cmd/xvrelay/main.go` | `-lan-broadcast`, `-lan-signal-ip`, `-lan-signal-port`, `-lan-offline-auth`, `lanWorldCard()`; `AcceptsOnlineAuth=false`, `AcceptsSelfSignedAuth=true`, `ConnectionType=4` |
+| `third_party/gophertunnel-2225/.../login/data.go` | `ClientData.Validate()` chấp nhận `ServerAddress` là **network ID thập phân** của NetherNet LAN (trước đó đòi `host:port` ⇒ đóng conn ngay sau Login) |
+| `internal/blocktranslate/registry.go` | `configureBlockTranslation` degrade custom block Geyser khi `hashed=false` thay vì `return error` giết session; vẫn dịch 23960 vanilla state |
+| `cmd/xvrelay/lan_login_test.go` | 4 regression test (numeric ID / garbage / host:port / Geyser custom blocks) |
+| `internal/lansignal/announce_test.go` | test `Announce` + `ServerData` |
+
+**Bằng chứng wire-level** (`bedrock-cross-version-relay/dist/lan255-capture.txt`, raw socket
+`SIO_RCVALL` trên `192.168.1.219`, 8 s): **110** gói UDP/7551, trong đó **16** gói từ
+`192.168.1.219:8555 → 255.255.255.255:7551` và **16** gói `→ 192.168.1.255:7551`. Giải mã
+đúng HMAC-SHA256 + AES-256-ECB (key `SHA256(LE 0xdeadbeef)`), `packet_id=1`, `ServerData`
+`version=7`, `server_name=mpmc-Java-Gateway`, `protocol=2225`, `version=1.26.60`,
+`level_name=mpmc-Java-1.21.11`, `0/20`, **`accepts_online_auth=False`**,
+**`accepts_self_signed_auth=True`**, `connection_type=4`, `nonce=""`, `unread=0`.
+(52 gói `192.168.1.255` còn lại là `RequestPacket` id=0 từ Overlix `:8554` — để nguyên.)
+
+**Bằng chứng join thật** (`/tmp/joiner-final-auto.log`, `dist/xvrelay-lan-final.log`,
+`_m6/geyser/java-server.log`): joiner thấy
+`self_signed=true online=false announced=true answered=true`, tự thử protocol 2193,
+`Spawn hoàn tất`, chat `1/1` được server phản hồi. Java server ghi
+`LANJoinerFinal joined the game` (23:39:48) rồi
+`[Not Secure] <LANJoinerFinal> hello-from-LAN-offline` (23:39:50). Geyser ghi
+`Player connected with username LANJoinerFinal (2225)`. Relay: 189 gói H→C
+(118 `LevelChunk`), `skipped=0`, `level=ERROR=0`, `ItemRegistry replaced 2080/2088`,
+block palette 23960 state + 30 placeholder, bỏ 105 custom block có kiểm soát.
+
+Hồi quy: `CGO_ENABLED=0 go test -buildvcs=false ./internal/lansignal/...
+./internal/blocktranslate/... ./cmd/xvrelay/... ./cmd/clientclone/...` ⇒ **4/4 `ok`**.
+Binary `dist/xvrelay` và `dist/xvrelay.exe` cùng SHA `941a5ab3…` (kiểm trước restart,
+tránh bẫy `.exe` cũ ở luật #12). Firewall inbound: `MPMC LAN Discovery UDP 7551`,
+`MPMC LAN Signaling UDP 8555`, `MPMC LAN WebRTC xvrelay` (theo program, mọi port ephemeral),
+`xvrelay UDP 19164`, `MPMC Geyser … 19132/19134`, tất cả `RemoteAddress=LocalSubnet`.
+
+**Còn `[Chưa xác minh]`**: client Bedrock **đồ hoạ gốc từ thiết bị LAN thứ hai** (chưa có
+thiết bị để test); đường NetherNet với **protocol 2225** đúng version card (terminal test client
+`joiner_new.exe` không có codec 2225, báo `unsupported LAN protocol 2225` — 2225 mới chỉ đo
+qua RakNet bằng `clientclone` ở §10.1); prompt **TOFU** lần join đầu; WAN / qua router.
+`-lan-proto`/`-lan-version` có thể đổi nếu client thật dùng version khác — relay vẫn chấp
+nhận `1001/2168/2169/2193/2225` trên wire. §0 giữ nguyên: không đụng agent, không nhúng
+GPL vào `mpmc-agent-*.zip`, gateway agent vẫn bind loopback.
+
