@@ -1,0 +1,8 @@
+{$MPMC_RELAY_DOMAIN:relay.example.com} {
+	encode zstd gzip
+	reverse_proxy {$MPMC_RELAY_UPSTREAM:relay:3340}
+	log {
+		output stdout
+		format console
+	}
+}

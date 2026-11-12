@@ -1,0 +1,27 @@
+run1 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run2 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run3 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run4 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run5 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run6 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run7 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run8 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run9 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run10 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run11 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run12 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run13 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run14 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run15 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run16 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run17 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run18 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run19 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run20 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run21 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run22 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run23 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+run24 exit=0 kicked=0 raw=0 disconnect=0 chunk=0
+=== Skipping LOGIN count (new .12 main log) ===
+0
+=== new-branch log lines ===

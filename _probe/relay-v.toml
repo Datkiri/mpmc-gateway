@@ -1,0 +1,2 @@
+http_bind_addr = "127.0.0.1:3342"
+metrics_addr = "127.0.0.1:9091"

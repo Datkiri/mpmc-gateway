@@ -1,0 +1,26 @@
+[Unit]
+Description=mpmc join agent (local Minecraft proxy)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=mpmc
+Group=mpmc
+WorkingDirectory=/opt/mpmc
+EnvironmentFile=-/etc/mpmc/join.env
+Environment=JAVA_OPTS=-Xms64m -Xmx512m
+Environment=MPMC_DATA_DIR=/var/lib/mpmc
+ExecStart=/opt/mpmc/run-join.sh
+Restart=on-failure
+RestartSec=5
+NoNewPrivileges=true
+PrivateTmp=true
+ProtectSystem=strict
+ProtectHome=true
+ReadWritePaths=/var/lib/mpmc
+CapabilityBoundingSet=
+LockPersonality=true
+
+[Install]
+WantedBy=multi-user.target

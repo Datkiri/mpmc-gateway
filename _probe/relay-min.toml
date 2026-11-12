@@ -1,0 +1,4 @@
+[relay]
+http_bind_addr = "0.0.0.0:3340"
+
+[limits]

@@ -1,0 +1,31 @@
+diff --git a/build.gradle b/build.gradle
+index 704cc04..1b52f4a 100644
+--- a/build.gradle
++++ b/build.gradle
+@@ -13,6 +13,7 @@ configurations {
+ }
+ 
+ repositories {
++    mavenLocal()
+     maven {
+         name = "ViaVersion"
+         url = "https://repo.viaversion.com"
+@@ -64,7 +65,7 @@ dependencies {
+     includeInJar "com.viaversion:viarewind-common:4.2.0"
+     includeInJar "net.raphimc:ViaLegacy:3.1.0"
+     includeInJar "com.viaversion:viaaprilfools-common:4.2.3"
+-    includeInJar "net.raphimc:ViaBedrock:0.0.31-20260927.164935-4"
++    includeInJar "net.raphimc:ViaBedrock:0.0.31-mpmc.18"
+ 
+     includeInJar "com.google.guava:guava:33.7.1-jre"
+     includeInJar "com.google.code.gson:gson:2.14.0"
+diff --git a/gradle.properties b/gradle.properties
+index 14448b8..baf2c78 100644
+--- a/gradle.properties
++++ b/gradle.properties
+@@ -7,3 +7,5 @@ java_version=17
+ maven_group=net.raphimc
+ maven_name=ViaProxy
+ maven_version=3.4.14
++# mavenLocal() đọc repo trên D (artifact ViaBedrock mpmc.2), không đụng C:\Users\Acer\.m2
++systemProp.maven.repo.local=D:/Documents/Muti Player For MCPE/Muti Player For MC JAVA/mpmc/_m6/gateway-build/m2repo

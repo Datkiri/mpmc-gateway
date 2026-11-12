@@ -1,0 +1,23 @@
+[agent]
+name = "mpmc"
+
+[coordinator]
+url = "https://coordinator.example.com"
+insecure_dev = false
+
+[transport]
+alpn = "mpmc/1"
+relay_mode = "custom"
+relay_urls = ["https://relay.example.com"]
+connect_timeout_sec = 20
+handshake_timeout_sec = 10
+
+[host]
+target = "127.0.0.1:25565"
+max_members = 8
+max_concurrent_streams = 20
+approval = "prompt"
+max_streams_per_ticket = 4
+
+[join]
+listen = "127.0.0.1:0"

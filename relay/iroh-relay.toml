@@ -1,0 +1,4 @@
+# iroh-relay chạy sau Caddy (TLS do Caddy kết thúc).
+# Các khóa là top-level theo định dạng của iroh-relay 1.2.0.
+http_bind_addr = "0.0.0.0:3340"
+metrics_bind_addr = "0.0.0.0:9090"

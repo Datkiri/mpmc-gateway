@@ -1,0 +1,19 @@
+# Build artifacts / secrets must never enter this backup repo
+build/
+dist/
+out/
+.gradle/
+.kotlin/
+node_modules/
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+*.class
+*.zip
+*.exe
+*.dll
+*.log
+session.json
+saves.json
+msa*.json
+xsts.json
+*.token

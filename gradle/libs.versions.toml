@@ -1,0 +1,61 @@
+[versions]
+kotlin = "2.2.21"
+coroutines = "1.9.0"
+serialization = "1.9.0"
+ktor = "3.0.3"
+logback = "1.6.6"
+postgres = "42.7.14"
+hikari = "7.1.0"
+flyway = "13.12.1"
+junit = "5.14.4"
+testcontainers = "1.21.4"
+zonky = "2.2.2"
+zonkyBinaries = "17.11.0"
+iroh = "1.2.0"
+jna = "5.17.0"
+slf4j = "2.0.17"
+tomlj = "1.1.1"
+picocli = "4.7.7"
+
+[libraries]
+kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "coroutines" }
+kotlinx-coroutines-test = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-test", version.ref = "coroutines" }
+kotlinx-serialization-json = { module = "org.jetbrains.kotlinx:kotlinx-serialization-json", version.ref = "serialization" }
+iroh = { module = "computer.iroh:iroh", version.ref = "iroh" }
+jna = { module = "net.java.dev.jna:jna", version.ref = "jna" }
+slf4j-api = { module = "org.slf4j:slf4j-api", version.ref = "slf4j" }
+tomlj = { module = "org.tomlj:tomlj", version.ref = "tomlj" }
+picocli = { module = "info.picocli:picocli", version.ref = "picocli" }
+
+ktor-server-core = { module = "io.ktor:ktor-server-core-jvm", version.ref = "ktor" }
+ktor-server-netty = { module = "io.ktor:ktor-server-netty-jvm", version.ref = "ktor" }
+ktor-server-content-negotiation = { module = "io.ktor:ktor-server-content-negotiation-jvm", version.ref = "ktor" }
+ktor-server-websockets = { module = "io.ktor:ktor-server-websockets-jvm", version.ref = "ktor" }
+ktor-server-call-logging = { module = "io.ktor:ktor-server-call-logging-jvm", version.ref = "ktor" }
+ktor-server-status-pages = { module = "io.ktor:ktor-server-status-pages-jvm", version.ref = "ktor" }
+ktor-server-body-limit = { module = "io.ktor:ktor-server-body-limit-jvm", version.ref = "ktor" }
+ktor-server-auth = { module = "io.ktor:ktor-server-auth-jvm", version.ref = "ktor" }
+ktor-server-test-host = { module = "io.ktor:ktor-server-test-host-jvm", version.ref = "ktor" }
+ktor-serialization-json = { module = "io.ktor:ktor-serialization-kotlinx-json-jvm", version.ref = "ktor" }
+ktor-client-core = { module = "io.ktor:ktor-client-core-jvm", version.ref = "ktor" }
+ktor-client-cio = { module = "io.ktor:ktor-client-cio-jvm", version.ref = "ktor" }
+ktor-client-websockets = { module = "io.ktor:ktor-client-websockets-jvm", version.ref = "ktor" }
+ktor-client-content-negotiation = { module = "io.ktor:ktor-client-content-negotiation-jvm", version.ref = "ktor" }
+
+logback-classic = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+postgresql = { module = "org.postgresql:postgresql", version.ref = "postgres" }
+hikaricp = { module = "com.zaxxer:HikariCP", version.ref = "hikari" }
+flyway-core = { module = "org.flywaydb:flyway-core", version.ref = "flyway" }
+flyway-postgresql = { module = "org.flywaydb:flyway-database-postgresql", version.ref = "flyway" }
+
+junit-bom = { module = "org.junit:junit-bom", version.ref = "junit" }
+junit-jupiter = { module = "org.junit.jupiter:junit-jupiter" }
+junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher" }
+testcontainers-postgresql = { module = "org.testcontainers:postgresql", version.ref = "testcontainers" }
+zonky-embedded-postgres = { module = "io.zonky.test:embedded-postgres", version.ref = "zonky" }
+zonky-binaries-windows = { module = "io.zonky.test.postgres:embedded-postgres-binaries-windows-amd64", version.ref = "zonkyBinaries" }
+zonky-binaries-linux = { module = "io.zonky.test.postgres:embedded-postgres-binaries-linux-amd64", version.ref = "zonkyBinaries" }
+
+[plugins]
+kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }

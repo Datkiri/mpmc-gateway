@@ -1,0 +1,2392 @@
+diff --git a/gradle.properties b/gradle.properties
+index 94da90e..27f9f89 100644
+--- a/gradle.properties
++++ b/gradle.properties
+@@ -4,4 +4,6 @@ org.gradle.configuration-cache=true
+ java_version=17
+ maven_group=net.raphimc
+ maven_name=ViaBedrock
+-maven_version=0.0.31-SNAPSHOT
++maven_version=0.0.31-mpmc.18
++# Repo local nằm trên D, không ghi artifact build vào C:\Users\Acer\.m2
++systemProp.maven.repo.local=D:/Documents/Muti Player For MCPE/Muti Player For MC JAVA/mpmc/_m6/gateway-build/m2repo
+diff --git a/src/main/java/net/raphimc/viabedrock/api/model/container/Container.java b/src/main/java/net/raphimc/viabedrock/api/model/container/Container.java
+index 26f1724..d1a092e 100644
+--- a/src/main/java/net/raphimc/viabedrock/api/model/container/Container.java
++++ b/src/main/java/net/raphimc/viabedrock/api/model/container/Container.java
+@@ -115,6 +115,14 @@ public abstract class Container {
+         return slot;
+     }
+ 
++    /**
++     * Whether the given Bedrock slot has a Java counterpart. Slots that do not (e.g. the Bedrock
++     * armor "Body" slot) are kept in sync server-side but never written to the Java client.
++     */
++    public boolean isJavaVisible(final int slot) {
++        return true;
++    }
++
+     public byte javaContainerId() {
+         return this.containerId();
+     }
+diff --git a/src/main/java/net/raphimc/viabedrock/api/model/container/player/ArmorContainer.java b/src/main/java/net/raphimc/viabedrock/api/model/container/player/ArmorContainer.java
+index 09ba1a4..0505d07 100644
+--- a/src/main/java/net/raphimc/viabedrock/api/model/container/player/ArmorContainer.java
++++ b/src/main/java/net/raphimc/viabedrock/api/model/container/player/ArmorContainer.java
+@@ -18,13 +18,24 @@
+ package net.raphimc.viabedrock.api.model.container.player;
+ 
+ import com.viaversion.viaversion.api.connection.UserConnection;
++import com.viaversion.viaversion.api.minecraft.item.Item;
+ import net.raphimc.viabedrock.protocol.data.enums.bedrock.generated.ContainerID;
+ import net.raphimc.viabedrock.protocol.data.enums.bedrock.generated.ContainerType;
++import net.raphimc.viabedrock.protocol.rewriter.ItemRewriter;
++
++import java.util.Arrays;
+ 
+ public class ArmorContainer extends InventorySubContainer {
+ 
++    /**
++     * Bedrock's armor container gained a fifth "Body" slot (SharedTypes_Legacy_ArmorSlot.Body).
++     * Java has no player body slot, so the item is kept server-side and never sent to the client.
++     */
++    public static final int BODY_SLOT = 4;
++    private static final int JAVA_SIZE = 4;
++
+     public ArmorContainer(final UserConnection user) {
+-        super(user, (byte) ContainerID.CONTAINER_ID_ARMOR.getValue(), ContainerType.ARMOR, 4);
++        super(user, (byte) ContainerID.CONTAINER_ID_ARMOR.getValue(), ContainerType.ARMOR, BODY_SLOT + 1);
+     }
+ 
+     @Override
+@@ -32,4 +43,23 @@ public class ArmorContainer extends InventorySubContainer {
+         return 5 + slot;
+     }
+ 
++    @Override
++    public boolean isJavaVisible(final int slot) {
++        return slot < JAVA_SIZE;
++    }
++
++    @Override
++    public Item[] getJavaItems() {
++        final Item[] javaItems = this.user.get(ItemRewriter.class).javaItems(this.items);
++        return Arrays.copyOf(javaItems, JAVA_SIZE);
++    }
++
++    @Override
++    public Item getJavaItem(final int slot) {
++        if (!this.isJavaVisible(slot)) {
++            return null;
++        }
++        return this.user.get(ItemRewriter.class).javaItem(this.getItem(slot));
++    }
++
+ }
+diff --git a/src/main/java/net/raphimc/viabedrock/protocol/BedrockProtocol.java b/src/main/java/net/raphimc/viabedrock/protocol/BedrockProtocol.java
+index 9595bea..4e636dd 100644
+--- a/src/main/java/net/raphimc/viabedrock/protocol/BedrockProtocol.java
++++ b/src/main/java/net/raphimc/viabedrock/protocol/BedrockProtocol.java
+@@ -19,16 +19,22 @@ package net.raphimc.viabedrock.protocol;
+ 
+ import com.viaversion.viaversion.api.Via;
+ import com.viaversion.viaversion.api.connection.UserConnection;
++import com.viaversion.viaversion.api.minecraft.GameMode;
++import com.viaversion.viaversion.api.minecraft.Vector3d;
+ import com.viaversion.viaversion.api.platform.providers.ViaProviders;
++import com.viaversion.viaversion.api.protocol.Protocol;
+ import com.viaversion.viaversion.api.protocol.packet.Direction;
+ import com.viaversion.viaversion.api.protocol.packet.PacketType;
+ import com.viaversion.viaversion.api.protocol.packet.PacketWrapper;
+ import com.viaversion.viaversion.api.protocol.packet.State;
++import com.viaversion.viaversion.api.protocol.remapper.PacketHandler;
+ import com.viaversion.viaversion.api.type.Types;
+ import com.viaversion.viaversion.exception.CancelException;
+ import com.viaversion.viaversion.exception.InformativeException;
+ import com.viaversion.viaversion.protocol.packet.PacketWrapperImpl;
+ import com.viaversion.viaversion.protocols.base.ClientboundLoginPackets;
++import com.viaversion.viaversion.protocols.v1_21_11to26_1.packet.ServerboundPackets26_1;
++import com.viaversion.viaversion.protocols.v1_21_5to1_21_6.packet.ServerboundPackets1_21_6;
+ import com.viaversion.viaversion.protocols.v26_2to26_3.packet.ClientboundConfigurationPackets26_3;
+ import com.viaversion.viaversion.protocols.v26_2to26_3.packet.ClientboundPackets26_3;
+ import com.viaversion.viaversion.protocols.v26_2to26_3.packet.ServerboundPackets26_3;
+@@ -39,7 +45,6 @@ import net.raphimc.viabedrock.api.protocol.StatelessTransitionProtocol;
+ import net.raphimc.viabedrock.api.util.PacketFactory;
+ import net.raphimc.viabedrock.platform.ViaBedrockConfig;
+ import net.raphimc.viabedrock.protocol.data.BedrockMappingData;
+-import net.raphimc.viabedrock.protocol.data.enums.bedrock.generated.PlayStatus;
+ import net.raphimc.viabedrock.protocol.packet.*;
+ import net.raphimc.viabedrock.protocol.provider.BlobCacheProvider;
+ import net.raphimc.viabedrock.protocol.provider.NettyPipelineProvider;
+@@ -49,13 +54,115 @@ import net.raphimc.viabedrock.protocol.rewriter.InventoryTransactionRewriter;
+ import net.raphimc.viabedrock.protocol.storage.*;
+ import net.raphimc.viabedrock.protocol.task.*;
+ 
++import java.util.Collections;
++import java.util.EnumMap;
+ import java.util.EnumSet;
++import java.util.Map;
+ import java.util.logging.Level;
+ 
+ public class BedrockProtocol extends StatelessTransitionProtocol<ClientboundBedrockPackets, ClientboundPackets26_3, ServerboundBedrockPackets, ServerboundPackets26_3> {
+ 
+     public static final BedrockMappingData MAPPINGS = new BedrockMappingData();
+ 
++    /** Per-packet wire audit, enabled with -Dmpmc.audit=true. Off by default in production. */
++    private static final boolean AUDIT = Boolean.getBoolean("mpmc.audit");
++
++    /** Guards the one-time ACCEPT_TELEPORTATION compatibility patch on ViaBackwards. */
++    private static volatile boolean teleportAckCompatPatched;
++
++    /** Guards the one-time INTERACT (entity right-click) compatibility patch on ViaBackwards. */
++    private static volatile boolean interactCompatPatched;
++
++    // Explicit disposition for every Bedrock clientbound packet that ViaBedrock does not translate.
++    // Bedrock 1.26.51 defines 169 clientbound packet types. 92 are translated to a Java packet and
++    // 21 are explicitly cancelled in UnhandledPackets; the remaining 56 are listed here with a
++    // reason instead of disappearing into a silent, generic fallback. "java-counterpart-unmapped"
++    // marks types where Java defines a nominal counterpart but ViaBedrock has no safe wire/registry
++    // mapping: emitting a guessed packet would produce a malformed Java packet, so the packet is
++    // consumed and terminated cleanly. No packet type is left without an explicit decision.
++    private static final String NO_JAVA = "no-java-packet";
++    private static final String JAVA_UNMAPPED = "java-counterpart-unmapped";
++    private static final String DEBUG_TOOLING = "bedrock-only:debug-editor-script";
++    private static final String EDUCATION = "bedrock-only:education-agent";
++    private static final String CLIENT_UI = "bedrock-only:client-ui";
++    private static final String TELEMETRY = "bedrock-only:telemetry";
++
++    private static final Map<ClientboundBedrockPackets, String> CLIENTBOUND_DISPOSITIONS = buildDispositions();
++
++    private static Map<ClientboundBedrockPackets, String> buildDispositions() {
++        final Map<ClientboundBedrockPackets, String> m = new EnumMap<>(ClientboundBedrockPackets.class);
++        putAll(m, JAVA_UNMAPPED,
++            ClientboundBedrockPackets.CONTAINER_SET_DATA,
++            ClientboundBedrockPackets.CRAFTING_DATA,
++            ClientboundBedrockPackets.SPAWN_EXPERIENCE_ORB,
++            ClientboundBedrockPackets.MAP_ITEM_DATA,
++            ClientboundBedrockPackets.UPDATE_TRADE,
++            ClientboundBedrockPackets.UPDATE_EQUIP,
++            ClientboundBedrockPackets.PLAYER_START_ITEM_COOLDOWN,
++            ClientboundBedrockPackets.UNLOCKED_RECIPES,
++            ClientboundBedrockPackets.TRIM_DATA);
++        putAll(m, NO_JAVA,
++            ClientboundBedrockPackets.SERVER_PLAYER_POST_MOVE_POSITION,
++            ClientboundBedrockPackets.HURT_ARMOR,
++            ClientboundBedrockPackets.SIMPLE_EVENT,
++            ClientboundBedrockPackets.SHOW_CREDITS,
++            ClientboundBedrockPackets.SET_LAST_HURT_BY,
++            ClientboundBedrockPackets.COMPLETED_USING_ITEM,
++            ClientboundBedrockPackets.MOTION_PREDICTION_HINTS,
++            ClientboundBedrockPackets.ANIMATE_ENTITY,
++            ClientboundBedrockPackets.SYNC_ENTITY_PROPERTY,
++            ClientboundBedrockPackets.ADD_VOLUME_ENTITY,
++            ClientboundBedrockPackets.REMOVE_VOLUME_ENTITY,
++            ClientboundBedrockPackets.SIMULATION_TYPE,
++            ClientboundBedrockPackets.CHANGE_MOB_PROPERTY,
++            ClientboundBedrockPackets.UPDATE_CLIENT_INPUT_LOCKS,
++            ClientboundBedrockPackets.AWARD_ACHIEVEMENT,
++            ClientboundBedrockPackets.MOVEMENT_EFFECT,
++            ClientboundBedrockPackets.PLAYER_UPDATE_ENTITY_OVERRIDES,
++            ClientboundBedrockPackets.PLAYER_LOCATION,
++            ClientboundBedrockPackets.SYNC_WORLD_CLOCKS,
++            ClientboundBedrockPackets.RECORD_STARTED);
++        putAll(m, CLIENT_UI,
++            ClientboundBedrockPackets.SHOW_STORE_OFFER,
++            ClientboundBedrockPackets.SERVER_SETTINGS_RESPONSE,
++            ClientboundBedrockPackets.ON_SCREEN_TEXTURE_ANIMATION,
++            ClientboundBedrockPackets.MULTIPLAYER_SETTINGS,
++            ClientboundBedrockPackets.PLAYER_ENCHANT_OPTIONS,
++            ClientboundBedrockPackets.NPC_DIALOGUE,
++            ClientboundBedrockPackets.TOAST_REQUEST,
++            ClientboundBedrockPackets.CAMERA_SPLINE,
++            ClientboundBedrockPackets.SET_PLAYER_INVENTORY_OPTIONS,
++            ClientboundBedrockPackets.SET_PLAYER_FURNACE_OPTIONS,
++            ClientboundBedrockPackets.STONECUTTER_SET_RECIPE);
++        putAll(m, DEBUG_TOOLING,
++            ClientboundBedrockPackets.ADD_BEHAVIOR_TREE,
++            ClientboundBedrockPackets.AUTOMATION_CLIENT_CONNECT,
++            ClientboundBedrockPackets.STRUCTURE_TEMPLATE_DATA_RESPONSE,
++            ClientboundBedrockPackets.POSITION_TRACKING_DB_SERVER_BROADCAST,
++            ClientboundBedrockPackets.DEBUG_INFO,
++            ClientboundBedrockPackets.DEBUG_RENDERER,
++            ClientboundBedrockPackets.TICKING_AREAS_LOAD_STATUS,
++            ClientboundBedrockPackets.EDITOR_NETWORK,
++            ClientboundBedrockPackets.FEATURE_REGISTRY,
++            ClientboundBedrockPackets.SERVER_STATS,
++            ClientboundBedrockPackets.GAME_TEST_RESULTS,
++            ClientboundBedrockPackets.JIGSAW_STRUCTURE_DATA,
++            ClientboundBedrockPackets.VOXEL_SHAPES);
++        putAll(m, EDUCATION,
++            ClientboundBedrockPackets.AGENT_ACTION_EVENT,
++            ClientboundBedrockPackets.AGENT_ANIMATION);
++        putAll(m, TELEMETRY,
++            ClientboundBedrockPackets.LEGACY_TELEMETRY_EVENT);
++        return Collections.unmodifiableMap(m);
++    }
++
++    private static void putAll(final Map<ClientboundBedrockPackets, String> map, final String reason,
++                               final ClientboundBedrockPackets... packets) {
++        for (final ClientboundBedrockPackets packet : packets) {
++            map.put(packet, reason);
++        }
++    }
++
+     private static final EnumSet<ClientboundBedrockPackets> LOGIN_STATE_WHITELIST = EnumSet.of(
+         ClientboundBedrockPackets.NETWORK_SETTINGS,
+         ClientboundBedrockPackets.SERVER_TO_CLIENT_HANDSHAKE,
+@@ -96,6 +203,7 @@ public class BedrockProtocol extends StatelessTransitionProtocol<ClientboundBedr
+         ClientPlayerPackets.register(this);
+         OtherPlayerPackets.register(this);
+         WorldPackets.register(this);
++        LocatorBarPackets.register(this);
+         EntityPackets.register(this);
+         HudPackets.register(this);
+         InventoryPackets.register(this);
+@@ -104,19 +212,48 @@ public class BedrockProtocol extends StatelessTransitionProtocol<ClientboundBedr
+ 
+         InteractionPackets.register(this);
+ 
+-        // Fallback for unhandled packets (Temporary)
++        // Every packet type that ViaBedrock does not translate gets an explicit, audited
++        // disposition. A silent cancel would make such packets invisible; these handlers keep
++        // the exact same clean termination but record one line per packet (with a reason) when
++        // -Dmpmc.audit=true is set. After this block NO clientbound or serverbound packet type
++        // is left unregistered, so the generic fallback can never hide a packet silently.
+         for (ClientboundBedrockPackets packet : this.unmappedClientboundPacketType.getEnumConstants()) {
+             if (!this.hasRegisteredClientbound(packet)) {
+-                this.cancelClientbound(packet);
++                final String reason = CLIENTBOUND_DISPOSITIONS.get(packet);
++                if (reason == null) {
++                    ViaBedrock.getPlatform().getLogger().log(Level.SEVERE,
++                        "[AUDIT] UNCLASSIFIED clientbound packet " + packet.name() + " has no disposition");
++                }
++                classifyClientbound(packet, reason == null ? "unclassified" : reason);
+             }
+         }
+         for (ServerboundPackets26_3 packet : this.unmappedServerboundPacketType.getEnumConstants()) {
+             if (!this.hasRegisteredServerbound(packet)) {
+-                this.cancelServerbound(packet);
++                classifyServerbound(packet);
+             }
+         }
+     }
+ 
++    private void classifyClientbound(final ClientboundBedrockPackets packet, final String reason) {
++        this.registerClientbound(packet, null, wrapper -> {
++            if (AUDIT) {
++                ViaBedrock.getPlatform().getLogger().info("[AUDIT] CLASSIFIED dir=CLIENTBOUND id="
++                    + packet.getId() + " name=" + packet.name() + " reason=" + reason);
++            }
++            wrapper.cancel();
++        });
++    }
++
++    private void classifyServerbound(final ServerboundPackets26_3 packet) {
++        this.registerServerbound(packet, null, wrapper -> {
++            if (AUDIT) {
++                ViaBedrock.getPlatform().getLogger().info("[AUDIT] CLASSIFIED dir=SERVERBOUND id="
++                    + packet.getId() + " name=" + packet.name() + " reason=no-bedrock-counterpart");
++            }
++            wrapper.cancel();
++        });
++    }
++
+     @Override
+     public void register(final ViaProviders providers) {
+         providers.require(NettyPipelineProvider.class);
+@@ -144,6 +281,7 @@ public class BedrockProtocol extends StatelessTransitionProtocol<ClientboundBedr
+         user.put(new ResourcePackDownloadTracker());
+         user.put(new BlobCache(user));
+         user.put(new PacketSyncStorage(user));
++        user.put(new DeferredClientboundPackets(user));
+         user.put(new ChannelStorage());
+         user.put(new PlayerListStorage());
+         user.put(new ScoreboardTracker());
+@@ -152,6 +290,142 @@ public class BedrockProtocol extends StatelessTransitionProtocol<ClientboundBedr
+ 
+         user.put(new InventoryTransactionRewriter(user));
+         user.put(new MapTracker(user));
++
++        installTeleportAckCompatibility(user);
++    }
++
++    /**
++     * Java 1.21-1.21.1 is served through ViaBackwards Protocol26_3To26_2, whose
++     * EntityPacketRewriter26_3 unconditionally calls passthrough(VAR_INT) on
++     * ACCEPT_TELEPORTATION. ViaVersion can replay that ack internally with an
++     * already-consumed 1-byte buffer (ridx=1, widx=1, no typed PacketValue); the
++     * stock handler then throws IndexOutOfBoundsException and ViaProxy kicks the
++     * client. Re-register a defensive handler on that protocol instance: read the
++     * teleport id only when a typed value or a readable byte actually exists, keep
++     * the id in ViaBackwards' storage, then cancel exactly as the stock handler did.
++     * This touches only ViaBedrock code and ViaVersion's public registration API;
++     * no ViaBackwards/ViaVersion jar is modified and no foreign source is copied.
++     */
++    @SuppressWarnings({"rawtypes", "unchecked"})
++    private static void installTeleportAckCompatibility(final UserConnection user) {
++        if (teleportAckCompatPatched) {
++            return;
++        }
++        synchronized (BedrockProtocol.class) {
++            if (teleportAckCompatPatched) {
++                return;
++            }
++            for (final Protocol protocol : user.getProtocolInfo().getPipeline().pipes()) {
++                if (!"com.viaversion.viabackwards.protocol.v26_3to26_2.Protocol26_3To26_2"
++                        .equals(protocol.getClass().getName())) {
++                    continue;
++                }
++                protocol.registerServerbound(State.PLAY, 0, 0, (PacketHandler) wrapper -> {
++                    final PacketWrapperImpl impl = (PacketWrapperImpl) wrapper;
++                    final boolean typed = wrapper.isReadable(Types.VAR_INT, 0);
++                    final boolean buffered = impl.getInputBuffer() != null
++                        && impl.getInputBuffer().isReadable();
++                    final Integer id = typed || buffered
++                        ? (Integer) wrapper.passthrough(Types.VAR_INT)
++                        : null;
++                    setCurrentTeleportId(wrapper.user(), protocol, id);
++                    wrapper.cancel();
++                }, true);
++                teleportAckCompatPatched = true;
++                ViaBedrock.getPlatform().getLogger().info(
++                    "[mpmc] Installed defensive ACCEPT_TELEPORTATION handler on Protocol26_3To26_2");
++                break;
++            }
++        }
++    }
++
++    /** ViaBackwards storage is not a compile dependency of ViaBedrock; call its public setter. */
++    private static void setCurrentTeleportId(final UserConnection user, final Protocol protocol,
++                                             final Integer id) {
++        try {
++            final Object storables = user.storables(protocol);
++            storables.getClass().getMethod("setCurrentTeleportId", Integer.class).invoke(storables, id);
++        } catch (final ReflectiveOperationException ignored) {
++            // No compatible storage: the downstream MOVE_PLAYER_POS_ROT handler no-ops.
++        }
++    }
++
++    /**
++     * Java 1.21-1.21.11 sends one combined serverbound INTERACT (use_entity) packet whose
++     * payload is [entityId, action, ...], with action 0 = INTERACT, 1 = ATTACK and
++     * 2 = INTERACT_AT. Since 26.1 the plain INTERACT and INTERACT_AT variants were merged:
++     * the 26.1/26.3 INTERACT packet is [entityId, hand, LOW_PRECISION_VECTOR, secondaryAction].
++     * ViaBackwards EntityPacketRewriter26_1 converts action 2 correctly but calls
++     * wrapper.cancel() for action 0, so a plain right-click on an entity never reaches
++     * BedrockProtocol and Bedrock never receives an ItemUseOnEntityTransaction.
++     *
++     * Measured on BDS 1.26.51 with a real Java 1.21.1 client and the default-off pipeline
++     * probe: the use_entity frame [0x16] reached step=9:before:Protocol26_1To1_21_11
++     * (id remapped 22 -> 24 -> 25) and stopped there; exactly one packet out of 691
++     * missed step 10. Re-register the handler on that protocol instance through ViaVersion's
++     * public registration API and synthesise a zero click position for action 0.
++     * No ViaBackwards/ViaVersion jar is modified and no foreign source is copied.
++     */
++    @SuppressWarnings({"rawtypes", "unchecked"})
++    private static void installInteractCompatibility(final UserConnection user) {
++        if (interactCompatPatched) {
++            return;
++        }
++        synchronized (BedrockProtocol.class) {
++            if (interactCompatPatched) {
++                return;
++            }
++            for (final Protocol protocol : user.getProtocolInfo().getPipeline().pipes()) {
++                if (!"com.viaversion.viabackwards.protocol.v26_1to1_21_11.Protocol26_1To1_21_11"
++                        .equals(protocol.getClass().getName())) {
++                    continue;
++                }
++                // replaceServerbound() keeps the existing id mapping and only swaps the handler;
++                // registerServerbound() would reject the duplicate packet type.
++                protocol.replaceServerbound(ServerboundPackets1_21_6.INTERACT, (PacketHandler) wrapper -> {
++                    wrapper.passthrough(Types.VAR_INT); // entity id
++                    final int action = (Integer) wrapper.read(Types.VAR_INT);
++                    switch (action) {
++                        case 0: // INTERACT without a position: 26.1 requires a vector.
++                            wrapper.passthrough(Types.VAR_INT); // hand
++                            wrapper.write(Types.LOW_PRECISION_VECTOR, new Vector3d(0D, 0D, 0D));
++                            // The trailing secondary-action boolean stays in the input buffer
++                            // and is serialized after the typed values, matching 26.3 INTERACT.
++                            break;
++                        case 1: // ATTACK, or spectate when the client is in spectator mode.
++                            wrapper.setPacketType(isSpectator(wrapper.user(), protocol)
++                                ? ServerboundPackets26_1.SPECTATE_ENTITY
++                                : ServerboundPackets26_1.ATTACK);
++                            wrapper.read(Types.BOOLEAN);
++                            break;
++                        case 2: // INTERACT_AT: keep the original click position.
++                            final float x = (Float) wrapper.read(Types.FLOAT);
++                            final float y = (Float) wrapper.read(Types.FLOAT);
++                            final float z = (Float) wrapper.read(Types.FLOAT);
++                            wrapper.passthrough(Types.VAR_INT); // hand
++                            wrapper.write(Types.LOW_PRECISION_VECTOR, new Vector3d(x, y, z));
++                            break;
++                        default:
++                            throw new IllegalArgumentException("Invalid interact action " + action);
++                    }
++                });
++                interactCompatPatched = true;
++                ViaBedrock.getPlatform().getLogger().info(
++                    "[mpmc] Installed INTERACT compatibility handler on Protocol26_1To1_21_11");
++                break;
++            }
++        }
++    }
++
++    /** ViaBackwards storage is not a compile dependency of ViaBedrock; call its public getter. */
++    private static boolean isSpectator(final UserConnection user, final Protocol protocol) {
++        try {
++            final Object storables = user.storables(protocol);
++            final int gameMode = (Integer) storables.getClass().getMethod("gameMode").invoke(storables);
++            return gameMode == GameMode.SPECTATOR.id();
++        } catch (final ReflectiveOperationException ignored) {
++            return false;
++        }
+     }
+ 
+     @Override
+@@ -161,6 +435,31 @@ public class BedrockProtocol extends StatelessTransitionProtocol<ClientboundBedr
+ 
+     @Override
+     public void transform(final Direction direction, final State state, final PacketWrapper wrapper) throws InformativeException, CancelException {
++        // Default-off. Only installs on a serverbound transform, where the full chain is present
++        // and BedrockProtocol is the last element; re-installs automatically after cleanPipes().
++        MpmcPipelineDiagnostics.install(wrapper.user(), direction);
++        // Retry the compatibility patch here: ProtocolPipelineImpl.add(Collection) calls
++        // init() before addAll(), so init() alone may see an incomplete pipeline. The login
++        // handshake always reaches BedrockProtocol before any PLAY teleport ack.
++        if (!teleportAckCompatPatched) {
++            installTeleportAckCompatibility(wrapper.user());
++        }
++        if (!interactCompatPatched) {
++            installInteractCompatibility(wrapper.user());
++        }
++        // Capture identity BEFORE transformation: handlers may change the packet id (Java->Bedrock
++        // / Bedrock->Java) or set it to -1 on cancel. Terminal audit lines must report the original
++        // wire id, otherwise a Java id would be looked up in the Bedrock registry and mislabelled.
++        final int preId = wrapper.getId();
++        final String preName = AUDIT ? packetName(direction, state, preId) : "";
++        final int preBytes = AUDIT ? inputBytes(wrapper) : 0;
++        if (AUDIT) {
++            final boolean hasHandler = direction == Direction.CLIENTBOUND
++                ? hasBedrockClientboundHandler(preId)
++                : this.hasRegisteredServerbound(state, preId);
++            audit(direction, state, wrapper, preId, preName, preBytes, hasHandler, "PRE");
++        }
++
+         if (direction == Direction.CLIENTBOUND) {
+             State serverState = wrapper.user().getProtocolInfo().getServerState();
+             final ClientboundBedrockPackets packet = ClientboundBedrockPackets.getPacket(wrapper.getId());
+@@ -170,30 +469,158 @@ public class BedrockProtocol extends StatelessTransitionProtocol<ClientboundBedr
+                 throw CancelException.generate();
+             }
+             if (serverState == State.LOGIN && !LOGIN_STATE_WHITELIST.contains(packet) && BEFORE_PLAY_STATE_WHITELIST.contains(packet)) { // Bedrock client can skip the login state
+-                ViaBedrock.getPlatform().getLogger().warning("Skipping LOGIN state");
+-                final PacketWrapper playStatus = PacketWrapper.create(ClientboundBedrockPackets.PLAY_STATUS, wrapper.user());
+-                playStatus.write(Types.INT, PlayStatus.LoginSuccess.getValue()); // status
+-                playStatus.send(BedrockProtocol.class, false);
++                // Upstream re-injects a synthetic Bedrock PLAY_STATUS(LoginSuccess) into the
++                // clientbound pipeline here. That wrapper has a non-null PacketType, so
++                // PacketWrapperImpl.constructPacket() uses packetType.state() (LOGIN) instead of
++                // the live connection state: the State.LOGIN handler emits a Java LOGIN_FINISHED
++                // (packet id 0x02) and calls onLoginSuccess() a second time. ViaProxy has already
++                // completed the Java LOGIN handshake, so this duplicate 0x02 reaches the client
++                // in CONFIGURATION, where 0x02 is DISCONNECT with an NBT reason. The Java client
++                // then parses the LOGIN_FINISHED payload (16-byte UUID + username) as an invalid
++                // NBT tag type (e.g. 0x75 = 117), logs "Chunk size is 26 but only 2 was read",
++                // and mineflayer reports a bogus kick {"type":117}. Bootstrap the Bedrock-side
++                // state machine directly instead: move to CONFIGURATION and send only the Bedrock
++                // CLIENT_CACHE_STATUS that the real PLAY_STATUS(LoginSuccess) would have sent.
++                // Never replay a Java login packet into a later connection state.
++                ViaBedrock.getPlatform().getLogger().warning("Skipping LOGIN state (Bedrock-side bootstrap, no Java LOGIN_FINISHED replay)");
+                 wrapper.user().getProtocolInfo().setServerState(State.CONFIGURATION);
+                 serverState = State.CONFIGURATION;
++                JoinPackets.sendClientCacheStatus(wrapper.user());
+             }
+             if (serverState != State.PLAY && !BEFORE_PLAY_STATE_WHITELIST.contains(packet)) { // Bedrock client ignores most packets before receiving the START_GAME packet
+-                ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "Received packet " + packet + " outside PLAY state. Ignoring it.");
++                final ByteBuf content = ((PacketWrapperImpl) wrapper).getInputBuffer();
++                wrapper.user().get(DeferredClientboundPackets.class).enqueue(wrapper.getId(), ByteBufUtil.getBytes(content, content.readerIndex(), content.readableBytes()));
++                if (AUDIT) {
++                    ViaBedrock.getPlatform().getLogger().info("[AUDIT] DEFERRED dir=CLIENTBOUND state=" + state
++                        + " id=" + preId + " name=" + preName + " bytes=" + preBytes);
++                }
+                 throw CancelException.generate();
+             }
+         }
+ 
+-        /*if (direction == Direction.CLIENTBOUND) {
+-         *     System.out.println("PRE: direction = " + direction + ", state = " + state + ", packet=" + ClientboundBedrockPackets.getPacket(wrapper.getId()) + ", wrapper = " + wrapper);
+-         * } else {
+-         *     System.out.println("PRE: direction = " + direction + ", state = " + state + ", packet=" + ServerboundPackets26_3.values()[wrapper.getId()] + ", wrapper = " + wrapper);
+-         * }*/
+-        super.transform(direction, state, wrapper);
+-        /*if (direction == Direction.CLIENTBOUND) {
+-         *     System.out.println("POST: direction = " + direction + ", state = " + state + ", packet=" + ClientboundPackets26_3.values()[wrapper.getId()] + ", wrapper = " + wrapper);
+-         * } else {
+-         *     System.out.println("POST: direction = " + direction + ", state = " + state + ", packet=" + ServerboundBedrockPackets.getPacket(wrapper.getId()) + ", wrapper = " + wrapper);
+-         * }*/
++        String postPhase = "POST";
++        try {
++            super.transform(direction, state, wrapper);
++        } catch (final CancelException e) {
++            postPhase = "CANCEL";
++            throw e;
++        } catch (final InformativeException e) {
++            postPhase = "ERROR";
++            throw e;
++        } catch (final RuntimeException e) {
++            postPhase = "ERROR";
++            throw e;
++        } finally {
++            if (AUDIT) {
++                audit(direction, state, wrapper, preId, preName, preBytes, true, postPhase);
++            }
++        }
++    }
++
++    /**
++     * One line per packet per phase. PRE carries the incoming wire id/name and whether an explicit
++     * handler is registered. POST carries the outgoing id (mappedJavaId for clientbound,
++     * toHost=true + Bedrock name for serverbound). CANCEL/ERROR mark deliberate termination or
++     * failure and are never reported as "sent to host". CLASSIFIED lines come from the explicit
++     * disposition handlers. Wrapped in try/catch so auditing can never change packet processing.
++     */
++    private static void audit(final Direction direction, final State state, final PacketWrapper wrapper,
++                              final int preId, final String preName, final int preBytes,
++                              final boolean hasHandler, final String phase) {
++        if (!AUDIT) {
++            return;
++        }
++        try {
++            final int outId = wrapper.getId();
++            final String detail;
++            if ("PRE".equals(phase)) {
++                detail = (direction == Direction.CLIENTBOUND ? "hasHandler=" : "hasHandler=")
++                    + hasHandler + (direction == Direction.SERVERBOUND ? " fromJavaClient=true" : "");
++            } else if ("CANCEL".equals(phase)) {
++                detail = "cancelled=true outId=" + outId;
++            } else if ("ERROR".equals(phase)) {
++                detail = "error=true outId=" + outId;
++            } else if (direction == Direction.CLIENTBOUND) {
++                detail = "mappedJavaId=" + outId + " javaName=" + javaClientboundName(state, outId);
++            } else {
++                final ServerboundBedrockPackets sb = ServerboundBedrockPackets.getPacket(outId);
++                detail = sb == null
++                    ? "unmapped=true outId=" + outId
++                    : "toHost=true outId=" + outId + " outName=" + sb.name();
++            }
++            ViaBedrock.getPlatform().getLogger().info("[AUDIT] " + phase + " dir=" + direction
++                + " state=" + state + " id=" + preId + " name=" + preName
++                + " bytes=" + preBytes + " " + detail);
++        } catch (final Throwable ignored) {
++            // Audit must never influence packet processing.
++        }
++    }
++
++    private boolean hasBedrockClientboundHandler(final int id) {
++        final ClientboundBedrockPackets cb = ClientboundBedrockPackets.getPacket(id);
++        return cb != null && this.hasRegisteredClientbound(cb);
++    }
++
++    private static String packetName(final Direction direction, final State state, final int id) {
++        return direction == Direction.CLIENTBOUND
++            ? nameOfBedrockClientbound(id)
++            : javaServerboundName(state, id);
++    }
++
++    private static int inputBytes(final PacketWrapper wrapper) {
++        try {
++            final ByteBuf buf = ((PacketWrapperImpl) wrapper).getInputBuffer();
++            return buf == null ? -1 : buf.readableBytes();
++        } catch (final Throwable ignored) {
++            return -1;
++        }
++    }
++
++    private static String nameOfBedrockClientbound(final int id) {
++        final ClientboundBedrockPackets cb = ClientboundBedrockPackets.getPacket(id);
++        return cb == null ? "UNKNOWN_BEDROCK_ID_" + id : cb.name();
++    }
++
++    private static String javaClientboundName(final State state, final int id) {
++        try {
++            if (state == State.LOGIN) {
++                for (final ClientboundLoginPackets packet : ClientboundLoginPackets.values()) {
++                    if (packet.getId() == id) {
++                        return packet.name();
++                    }
++                }
++            } else if (state == State.CONFIGURATION) {
++                for (final ClientboundConfigurationPackets26_3 packet : ClientboundConfigurationPackets26_3.values()) {
++                    if (packet.getId() == id) {
++                        return packet.name();
++                    }
++                }
++            } else if (state == State.PLAY) {
++                for (final ClientboundPackets26_3 packet : ClientboundPackets26_3.values()) {
++                    if (packet.getId() == id) {
++                        return packet.name();
++                    }
++                }
++            }
++        } catch (final Throwable ignored) {
++        }
++        return "JAVA_" + state.name() + "_ID_" + id;
++    }
++
++    private static String javaServerboundName(final State state, final int id) {
++        if (state == State.PLAY) {
++            try {
++                for (final ServerboundPackets26_3 packet : ServerboundPackets26_3.values()) {
++                    if (packet.getId() == id) {
++                        return packet.name();
++                    }
++                }
++            } catch (final Throwable ignored) {
++            }
++        }
++        // Java uses separate packet enums for LOGIN/CONFIGURATION/HANDSHAKE. Do not guess a PLAY
++        // name from a foreign id: report state + raw id so the record stays unambiguous.
++        return "JAVA_" + state.name() + "_ID_" + id;
+     }
+ 
+     public static void kickForIllegalState(final UserConnection user, final String reason) {
+diff --git a/src/main/java/net/raphimc/viabedrock/protocol/ClientboundBedrockPackets.java b/src/main/java/net/raphimc/viabedrock/protocol/ClientboundBedrockPackets.java
+index 609785c..e54ed8a 100644
+--- a/src/main/java/net/raphimc/viabedrock/protocol/ClientboundBedrockPackets.java
++++ b/src/main/java/net/raphimc/viabedrock/protocol/ClientboundBedrockPackets.java
+@@ -189,7 +189,8 @@ public enum ClientboundBedrockPackets implements ClientboundPacketType {
+     VOXEL_SHAPES(MinecraftPacketIds.VoxelShapesPacket.getValue()),
+     SET_PLAYER_FURNACE_OPTIONS(MinecraftPacketIds.SetPlayerFurnaceOptions.getValue()),
+     RECORD_STARTED(MinecraftPacketIds.RecordStarted.getValue()),
+-    STONECUTTER_SET_RECIPE(MinecraftPacketIds.ClientboundStonecutterSetRecipePacket.getValue());
++    STONECUTTER_SET_RECIPE(MinecraftPacketIds.ClientboundStonecutterSetRecipePacket.getValue()),
++    LOCATOR_BAR(MinecraftPacketIds.LocatorBarPacket.getValue());
+     // UPDATE_SOUND_DATA(MinecraftPacketIds.ClientboundUpdateSoundDataPacket.getValue());
+     // CONTROL_SCHEME_SET(MinecraftPacketIds.ClientboundControlSchemeSetPacket.getValue()),
+     // PRIMITIVE_SHAPES(MinecraftPacketIds.PrimitiveShapesPacket.getValue()),
+diff --git a/src/main/java/net/raphimc/viabedrock/protocol/MpmcPipelineDiagnostics.java b/src/main/java/net/raphimc/viabedrock/protocol/MpmcPipelineDiagnostics.java
+new file mode 100644
+index 0000000..6d06d2e
+--- /dev/null
++++ b/src/main/java/net/raphimc/viabedrock/protocol/MpmcPipelineDiagnostics.java
+@@ -0,0 +1,159 @@
++/*
++ * This file is part of ViaBedrock - https://github.com/RaphiMC/ViaBedrock
++ * Copyright (C) 2023-2026 RK_01/RaphiMC and contributors
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++package net.raphimc.viabedrock.protocol;
++
++import com.viaversion.viaversion.api.Via;
++import com.viaversion.viaversion.api.connection.UserConnection;
++import com.viaversion.viaversion.api.debug.DebugHandler;
++import com.viaversion.viaversion.api.protocol.AbstractProtocol;
++import com.viaversion.viaversion.api.protocol.Protocol;
++import com.viaversion.viaversion.api.protocol.packet.Direction;
++import com.viaversion.viaversion.api.protocol.packet.PacketWrapper;
++import com.viaversion.viaversion.api.protocol.packet.State;
++import com.viaversion.viaversion.exception.CancelException;
++import com.viaversion.viaversion.exception.InformativeException;
++import com.viaversion.viaversion.protocols.v26_2to26_3.packet.ClientboundPackets26_3;
++import com.viaversion.viaversion.protocols.v26_2to26_3.packet.ServerboundPackets26_3;
++import net.raphimc.viabedrock.ViaBedrock;
++
++import java.lang.reflect.Field;
++import java.util.ArrayList;
++import java.util.List;
++import java.util.logging.Level;
++
++/**
++ * Default-off diagnostic, enabled with {@code -Dmpmc.debug.pipeline=true}.
++ *
++ * <p>{@code PacketWrapperImpl.apply()} walks the serverbound protocol list and calls
++ * {@code Protocol.transform()} on each element. A handler that calls {@code wrapper.cancel()}
++ * makes {@code AbstractProtocol.transform()} throw {@link CancelException}, aborting the whole
++ * loop: the packet never reaches {@link BedrockProtocol} and no error is logged. That is the
++ * failure mode being investigated for 1.21.1 {@code use_entity}: the raw TCP frame leaves the
++ * client, but the BedrockProtocol audit never sees it.</p>
++ *
++ * <p>This diagnostic inserts a pure no-op {@code Protocol} before every real protocol in the
++ * serverbound list and logs the wrapper id at each step. The last probe reached for a packet
++ * identifies the protocol immediately after it as the layer that cancelled/consumed the wrapper.
++ * It also enables ViaVersion's own pre/post transform logger.</p>
++ *
++ * <p>Safety notes derived from ViaVersion 5.12.1 bytecode: {@code apply()} iterates by index
++ * with the size cached before the loop, and BedrockProtocol is the last serverbound protocol,
++ * so replacing the list contents inside BedrockProtocol.transform() cannot cause a
++ * ConcurrentModificationException or double-transform. {@code reversedProtocolList} is a
++ * separate ArrayList copy and is deliberately left untouched, so clientbound traffic keeps the
++ * original chain. Probes never call super.transform() and never modify the wrapper.</p>
++ */
++public final class MpmcPipelineDiagnostics {
++
++    private static final boolean ENABLED = Boolean.getBoolean("mpmc.debug.pipeline");
++    private static volatile boolean debugHandlerEnabled;
++
++    private MpmcPipelineDiagnostics() {
++    }
++
++    public static void install(final UserConnection user, final Direction direction) {
++        if (!ENABLED || direction != Direction.SERVERBOUND) {
++            return;
++        }
++        if (!debugHandlerEnabled) {
++            synchronized (MpmcPipelineDiagnostics.class) {
++                if (!debugHandlerEnabled) {
++                    try {
++                        final DebugHandler debug = Via.getManager().debugHandler();
++                        debug.setEnabled(true);
++                        debug.setLogPrePacketTransform(true);
++                        debug.setLogPostPacketTransform(true);
++                        ViaBedrock.getPlatform().getLogger()
++                                .warning("[PIPEDIAG] ViaVersion transform logger enabled");
++                    } catch (final Throwable t) {
++                        warn("DebugHandler", t);
++                    }
++                    debugHandlerEnabled = true;
++                }
++            }
++        }
++        try {
++            final Object pipeline = user.getProtocolInfo().getPipeline();
++            final Field field = pipeline.getClass().getDeclaredField("protocolList");
++            field.setAccessible(true);
++            @SuppressWarnings("unchecked")
++            final List<Protocol> list = (List<Protocol>) field.get(pipeline);
++            boolean hasProbe = false;
++            boolean hasBedrock = false;
++            for (final Protocol protocol : list) {
++                if (protocol instanceof PipelineProbe) {
++                    hasProbe = true;
++                }
++                if (protocol instanceof BedrockProtocol) {
++                    hasBedrock = true;
++                }
++            }
++            // Only install once the full chain is present, and re-install if cleanPipes() wiped it.
++            if (hasProbe || !hasBedrock) {
++                return;
++            }
++            final StringBuilder chain = new StringBuilder();
++            final List<Protocol> withProbes = new ArrayList<>(list.size() * 2 + 1);
++            for (int i = 0; i < list.size(); i++) {
++                final Protocol protocol = list.get(i);
++                chain.append('[').append(i).append(']')
++                        .append(protocol.getClass().getSimpleName()).append(' ');
++                withProbes.add(new PipelineProbe(i + ":before:" + protocol.getClass().getSimpleName()));
++                withProbes.add(protocol);
++            }
++            withProbes.add(new PipelineProbe(list.size() + ":end"));
++            ViaBedrock.getPlatform().getLogger()
++                    .warning("[PIPEDIAG] serverbound chain=" + chain);
++            list.clear();
++            list.addAll(withProbes);
++            ViaBedrock.getPlatform().getLogger()
++                    .warning("[PIPEDIAG] probes installed=" + withProbes.size()
++                            + " user=" + System.identityHashCode(user));
++        } catch (final Throwable t) {
++            warn("probe install", t);
++        }
++    }
++
++    private static void warn(final String stage, final Throwable t) {
++        ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "[PIPEDIAG] " + stage + " failed: " + t, t);
++    }
++
++    /** No-op observation point: never calls super.transform(), so it cannot alter a packet. */
++    public static final class PipelineProbe
++            extends AbstractProtocol<ClientboundPackets26_3, ClientboundPackets26_3,
++            ServerboundPackets26_3, ServerboundPackets26_3> {
++
++        private final String label;
++
++        public PipelineProbe(final String label) {
++            super(ClientboundPackets26_3.class, ClientboundPackets26_3.class,
++                    ServerboundPackets26_3.class, ServerboundPackets26_3.class);
++            this.label = label;
++        }
++
++        @Override
++        public void transform(final Direction direction, final State state, final PacketWrapper wrapper)
++                throws InformativeException, CancelException {
++            if (direction == Direction.SERVERBOUND) {
++                ViaBedrock.getPlatform().getLogger().info("[PIPEDIAG] step=" + label
++                        + " id=" + wrapper.getId() + " state=" + state
++                        + " cancelled=" + wrapper.isCancelled());
++            }
++        }
++    }
++}
+diff --git a/src/main/java/net/raphimc/viabedrock/protocol/data/enums/bedrock/generated/MinecraftPacketIds.java b/src/main/java/net/raphimc/viabedrock/protocol/data/enums/bedrock/generated/MinecraftPacketIds.java
+index 8ad5285..43bd025 100644
+--- a/src/main/java/net/raphimc/viabedrock/protocol/data/enums/bedrock/generated/MinecraftPacketIds.java
++++ b/src/main/java/net/raphimc/viabedrock/protocol/data/enums/bedrock/generated/MinecraftPacketIds.java
+@@ -218,6 +218,7 @@ public enum MinecraftPacketIds {
+     PlayerLocation(326),
+     VoxelShapesPacket(337),
+     CameraSplinePacket(338),
++    LocatorBarPacket(341),
+     SyncWorldClocks(344),
+     SendPartyDestinationCookie(349),
+     PartyDestinationCookieResponse(350),
+diff --git a/src/main/java/net/raphimc/viabedrock/protocol/packet/ClientPlayerPackets.java b/src/main/java/net/raphimc/viabedrock/protocol/packet/ClientPlayerPackets.java
+index 08f286e..770dde1 100644
+--- a/src/main/java/net/raphimc/viabedrock/protocol/packet/ClientPlayerPackets.java
++++ b/src/main/java/net/raphimc/viabedrock/protocol/packet/ClientPlayerPackets.java
+@@ -23,6 +23,7 @@ import com.viaversion.viaversion.api.protocol.packet.PacketWrapper;
+ import com.viaversion.viaversion.api.protocol.remapper.PacketHandler;
+ import com.viaversion.viaversion.api.protocol.remapper.PacketHandlers;
+ import com.viaversion.viaversion.api.type.Types;
++import com.viaversion.viaversion.protocol.packet.PacketWrapperImpl;
+ import com.viaversion.viaversion.protocols.v26_2to26_3.packet.ClientboundPackets26_3;
+ import com.viaversion.viaversion.protocols.v26_2to26_3.packet.ServerboundPackets26_3;
+ import com.viaversion.viaversion.util.Pair;
+@@ -112,8 +113,8 @@ public final class ClientPlayerPackets {
+                         wrapper.write(Types.VAR_INT, chunkTracker.getDimension().ordinal()); // dimension id
+                         wrapper.write(Types.STRING, chunkTracker.getDimension().getKey()); // dimension name
+                         wrapper.write(Types.LONG, 0L); // hashed seed
+-                        wrapper.write(Types.BYTE, (byte) clientPlayer.javaGameMode().ordinal()); // game mode
+-                        wrapper.write(Types.BYTE, (byte) -1); // previous game mode
++                        wrapper.write(Types.VAR_INT, clientPlayer.javaGameMode().ordinal()); // game mode
++                        wrapper.write(Types.OPTIONAL_VAR_INT, null); // previous game mode
+                         wrapper.write(Types.BOOLEAN, false); // is debug
+                         wrapper.write(Types.BOOLEAN, gameSession.isFlatGenerator()); // is flat
+                         wrapper.write(Types.OPTIONAL_GLOBAL_POSITION, null); // last death position
+@@ -437,7 +438,18 @@ public final class ClientPlayerPackets {
+         protocol.registerServerbound(ServerboundPackets26_3.ACCEPT_TELEPORTATION, null, wrapper -> {
+             wrapper.cancel();
+             final ClientPlayerEntity clientPlayer = wrapper.user().get(EntityTracker.class).getClientPlayer();
+-            clientPlayer.confirmTeleport(wrapper.read(Types.VAR_INT)); // teleport id
++            // Java 1.21-1.21.1 goes through ViaBackwards. An internal ACCEPT_TELEPORTATION
++            // replay can reach here with an already-consumed 1-byte input buffer
++            // (ridx=1, widx=1) and no typed PacketValue. Reading blindly throws
++            // IndexOutOfBoundsException and ViaProxy kicks the client. Only read when a
++            // typed value or a readable byte really exists; passthrough() preserves the
++            // value for every handler in the pipeline. Bedrock has no teleport-ack packet,
++            // so a dataless replay is simply discarded (the packet is already cancelled).
++            final PacketWrapperImpl impl = (PacketWrapperImpl) wrapper;
++            if (wrapper.isReadable(Types.VAR_INT, 0)
++                    || (impl.getInputBuffer() != null && impl.getInputBuffer().isReadable())) {
++                clientPlayer.confirmTeleport(wrapper.passthrough(Types.VAR_INT)); // teleport id
++            }
+         });
+         protocol.registerServerbound(ServerboundPackets26_3.PLAYER_INPUT, null, wrapper -> {
+             wrapper.cancel();
+@@ -555,7 +567,32 @@ public final class ClientPlayerPackets {
+             wrapper.write(BedrockTypes.FLOAT_LE, clientPlayer.rotation().y()); // interact yaw
+             wrapper.write(BedrockTypes.UNSIGNED_VAR_LONG, (long) clientPlayer.age()); // tick
+             wrapper.write(BedrockTypes.POSITION_3F, velocity); // delta
+-            wrapper.write(Types.BOOLEAN, false); // no item interaction
++            final InventoryTracker inventoryTracker = wrapper.user().get(InventoryTracker.class);
++            final net.raphimc.viabedrock.protocol.model.inventory.BedrockInventoryTransaction pendingTransaction = inventoryTracker.pollPendingAuthInputTransaction();
++            wrapper.write(Types.BOOLEAN, pendingTransaction != null);
++            if (pendingTransaction != null) {
++                // 1.26.40+ auth input transaction: legacy, actions array (no transaction type), use item data.
++                wrapper.write(BedrockTypes.VAR_INT, pendingTransaction.legacyRequestId());
++                wrapper.write(Types.BOOLEAN, pendingTransaction.legacyRequestId() != 0);
++                if (pendingTransaction.legacyRequestId() != 0) {
++                    wrapper.write(net.raphimc.viabedrock.protocol.types.InventoryTypes.LEGACY_SET_ITEM_SLOT_DATA, pendingTransaction.legacySlots().toArray(new net.raphimc.viabedrock.protocol.model.inventory.LegacySetItemSlotData[0]));
++                }
++                // Only the transaction and the legacy slots are optionals; the actions are a plain array.
++                wrapper.write(wrapper.user().get(net.raphimc.viabedrock.protocol.rewriter.InventoryTransactionRewriter.class).getInventoryActionDataType(), pendingTransaction.actions().toArray(new net.raphimc.viabedrock.protocol.model.inventory.InventoryActionData[0]));
++                final net.raphimc.viabedrock.protocol.model.inventory.InventoryTransactionData.UseItemTransactionData data = (net.raphimc.viabedrock.protocol.model.inventory.InventoryTransactionData.UseItemTransactionData) pendingTransaction.transactionData();
++                wrapper.write(BedrockTypes.VAR_INT, data.actionType().getValue());
++                wrapper.write(Types.UNSIGNED_BYTE, (short) data.triggerType().getValue());
++                wrapper.write(BedrockTypes.BLOCK_POSITION, data.blockPosition());
++                wrapper.write(Types.UNSIGNED_BYTE, (short) data.face());
++                wrapper.write(BedrockTypes.VAR_INT, data.hotbarSlot());
++                wrapper.write(Types.UNSIGNED_BYTE, (short) data.handSlot().getValue());
++                wrapper.write(wrapper.user().get(ItemRewriter.class).newItemType(), data.itemInHand());
++                wrapper.write(BedrockTypes.POSITION_3F, data.playerPosition());
++                wrapper.write(BedrockTypes.POSITION_3F, data.clickPosition());
++                wrapper.write(BedrockTypes.UNSIGNED_VAR_INT, data.blockRuntimeId());
++                wrapper.write(Types.UNSIGNED_BYTE, (short) data.predictedResult().getValue());
++                wrapper.write(Types.UNSIGNED_BYTE, (short) data.clientCooldownState().getValue());
++            }
+             wrapper.write(Types.BOOLEAN, false); // no item stack request
+             final boolean hasBlockActions = clientPlayer.authInputData().contains(PlayerAuthInputData.PerformBlockActions);
+             wrapper.write(Types.BOOLEAN, hasBlockActions);
+diff --git a/src/main/java/net/raphimc/viabedrock/protocol/packet/InteractionPackets.java b/src/main/java/net/raphimc/viabedrock/protocol/packet/InteractionPackets.java
+index 0fc8d66..3d80293 100644
+--- a/src/main/java/net/raphimc/viabedrock/protocol/packet/InteractionPackets.java
++++ b/src/main/java/net/raphimc/viabedrock/protocol/packet/InteractionPackets.java
+@@ -21,8 +21,10 @@ import com.viaversion.viaversion.api.minecraft.BlockFace;
+ import com.viaversion.viaversion.api.minecraft.BlockPosition;
+ import com.viaversion.viaversion.api.protocol.packet.PacketWrapper;
+ import com.viaversion.viaversion.api.type.Types;
++import com.viaversion.viaversion.protocol.packet.PacketWrapperImpl;
+ import com.viaversion.viaversion.protocols.v26_2to26_3.packet.ClientboundPackets26_3;
+ import com.viaversion.viaversion.protocols.v26_2to26_3.packet.ServerboundPackets26_3;
++import io.netty.buffer.ByteBuf;
+ import net.raphimc.viabedrock.ViaBedrock;
+ import net.raphimc.viabedrock.api.model.container.Container;
+ import net.raphimc.viabedrock.api.model.container.player.InventoryContainer;
+@@ -177,10 +179,19 @@ public final class InteractionPackets {
+             final ChunkTracker chunkTracker = wrapper.user().get(ChunkTracker.class);
+             final InventoryTransactionRewriter inventoryTransactionRewriter = wrapper.user().get(InventoryTransactionRewriter.class);
+ 
++            // ViaVersion's 1_21 -> 1_21_2 serverbound rewriter converts USE_ITEM_ON into
++            // typed PacketValues (hand/position/direction/cursor/inside), while newer
++            // clients reach us with plain 26.3 wire bytes. read(Type) polls typed values
++            // first, so detect the representation instead of assuming one. This is what
++            // broke Java 1.21-1.21.1: reading UNSIGNED_BYTE hit a stored VarInt direction.
++            final boolean typedValues = wrapper.isReadable(Types.VAR_INT, 0);
++
+             final InteractionHand hand = InteractionHand.values()[wrapper.read(Types.VAR_INT)]; // hand
+ 
+             final BlockPosition position = wrapper.read(Types.BLOCK_POSITION1_14); // block position
+-            final int faceInt = wrapper.read(Types.UNSIGNED_BYTE); // face
++            // A VAR_INT matches both the typed direction value and the raw 26.3 face
++            // byte (small face ids encode identically as varint / unsigned byte).
++            final int faceInt = wrapper.read(Types.VAR_INT);
+             final Direction direction = Direction.getFromVerticalId(faceInt);
+             if (direction == null) {
+                 ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "Unknown block face id: " + faceInt);
+@@ -193,10 +204,40 @@ public final class InteractionPackets {
+                 wrapper.read(Types.FLOAT)  // z
+             );
+             final boolean insideBlock = wrapper.read(Types.BOOLEAN); // inside block
+-            wrapper.read(Types.BOOLEAN); // world border, this doesn't exist on Bedrock.
++
++            // The tail differs per client version:
++            //  * Java 26.3 (1.21.4+) arrives as raw wire bytes: worldBorderHit + sequence.
++            //  * ViaBackwards Protocol1_21_2To1_21 rewrites Java 1.21/1.21.1 USE_ITEM_ON by
++            //    passthrough()-ing hand/position/face/cursor/insideBlock and writing a
++            //    synthetic worldBorderHit=false. It deliberately does NOT passthrough the
++            //    trailing sequence VarInt, so that byte stays in the input buffer. Audit
++            //    measured exactly bytes=1 on every PRE USE_ITEM_ON for 1.21.1 while the
++            //    handler reported seq=0 -> the Java client never got a matching ack and
++            //    kept its predicted block, which shows up as ghost blocks / stutter.
++            //    PacketWrapperImpl.read(Type) only falls back to the input buffer when
++            //    readableObjects is empty, so consume the leftover VarInt directly.
++            int sequence = 0;
++            if (typedValues) {
++                if (wrapper.isReadable(Types.BOOLEAN, 0)) {
++                    wrapper.read(Types.BOOLEAN); // world border hit (no Bedrock equivalent)
++                }
++                if (wrapper.isReadable(Types.VAR_INT, 0)) {
++                    sequence = wrapper.read(Types.VAR_INT);
++                } else {
++                    final ByteBuf input = ((PacketWrapperImpl) wrapper).getInputBuffer();
++                    if (input != null && input.isReadable()) {
++                        sequence = Types.VAR_INT.read(input);
++                    }
++                }
++            } else {
++                wrapper.read(Types.BOOLEAN); // world border, this doesn't exist on Bedrock.
++                sequence = wrapper.read(Types.VAR_INT);
++            }
+ 
+             // Send back block changed ack with the sequence, this will help with ghost blocks.
+-            PacketFactory.sendJavaBlockChangedAck(wrapper.user(), wrapper.read(Types.VAR_INT));
++            PacketFactory.sendJavaBlockChangedAck(wrapper.user(), sequence);
++
++            ViaBedrock.getPlatform().getLogger().log(Level.INFO, "USE_ITEM_ON pos=" + position.x() + "," + position.y() + "," + position.z() + " face=" + faceInt + " hand=" + hand + " inside=" + insideBlock + " cursor=" + clickPosition.x() + "," + clickPosition.y() + "," + clickPosition.z() + " typed=" + typedValues + " seq=" + sequence);
+ 
+             // The player can only interact using the main hand on Bedrock!
+             if (hand != InteractionHand.MAIN_HAND) {
+@@ -213,9 +254,7 @@ public final class InteractionPackets {
+                 faceInt
+             );
+ 
+-            // This is the main packet that the bedrock client use to interact with block.The rest of the
+-            final PacketWrapper transactionPacket = PacketWrapper.create(ServerboundBedrockPackets.INVENTORY_TRANSACTION, wrapper.user());
+-
++            // Since Bedrock 1.26.40 the use item transaction is embedded in the next PlayerAuthInput packet.
+             BedrockItem predictedToItem = inventoryTracker.getInventoryContainer().getSelectedHotbarItem().copy();
+             // This is not entirely correct, but at least it's more accurate than not sending actions or sending the original item data.
+             if (predictedToItem.blockRuntimeId() != 0 && clientPlayer.javaGameMode() != GameMode.CREATIVE) {
+@@ -252,10 +291,11 @@ public final class InteractionPackets {
+                     ItemUseClientCooldownState.Off
+                 )
+             );
+-            transactionPacket.write(inventoryTransactionRewriter.getInventoryTransactionType(), inventoryTransaction);
+-
+-            transactionPacket.sendToServer(BedrockProtocol.class);
++            final BedrockItem hotbarItem = inventoryTracker.getInventoryContainer().getSelectedHotbarItem();
++            ViaBedrock.getPlatform().getLogger().log(Level.INFO, "USE_ITEM_ON tx hotbarSlot=" + inventoryTracker.getInventoryContainer().getSelectedHotbarSlot() + " fromItem=" + hotbarItem.identifier() + ":" + hotbarItem.data() + "x" + hotbarItem.amount() + " netId=" + hotbarItem.netId() + " predicted=" + predictedToItem.identifier() + ":" + predictedToItem.data() + "x" + predictedToItem.amount() + " refState=" + chunkTracker.getBlockState(position) + " gamemode=" + clientPlayer.javaGameMode());
+ 
++            inventoryTracker.addPendingAuthInputTransaction(inventoryTransaction);
++            clientPlayer.addAuthInputData(PlayerAuthInputData.PerformItemInteraction);
+             // Bedrock sends a stop item use on after the transaction packet
+             PlayerActionPacketFactory.sendBedrockPlayerAction(
+                 wrapper.user(),
+@@ -273,6 +313,8 @@ public final class InteractionPackets {
+             wrapper.cancel();
+             final BedrockInventoryTransaction inventoryTransaction = wrapper.read(inventoryTransactionRewriter.getInventoryTransactionType());
+ 
++            ViaBedrock.getPlatform().getLogger().log(Level.INFO, "INVENTORY_TRANSACTION_ACK type=" + inventoryTransaction.transactionType() + " legacyReqId=" + inventoryTransaction.legacyRequestId() + " actions=" + (inventoryTransaction.actions() == null ? "null" : String.valueOf(inventoryTransaction.actions().size())));
++
+             if (inventoryTransaction.legacyRequestId() != 0) {
+                 // Ignore legacy inventory transactions for now
+                 return;
+diff --git a/src/main/java/net/raphimc/viabedrock/protocol/packet/InventoryPackets.java b/src/main/java/net/raphimc/viabedrock/protocol/packet/InventoryPackets.java
+index 4b233b0..4a7da99 100644
+--- a/src/main/java/net/raphimc/viabedrock/protocol/packet/InventoryPackets.java
++++ b/src/main/java/net/raphimc/viabedrock/protocol/packet/InventoryPackets.java
+@@ -22,11 +22,13 @@ import com.viaversion.nbt.tag.StringTag;
+ import com.viaversion.viaversion.api.connection.UserConnection;
+ import com.viaversion.viaversion.api.minecraft.BlockPosition;
+ import com.viaversion.viaversion.api.minecraft.Holder;
++import com.viaversion.viaversion.api.minecraft.item.Item;
+ import com.viaversion.viaversion.api.protocol.packet.PacketWrapper;
+ import com.viaversion.viaversion.api.protocol.remapper.PacketHandlers;
+ import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
+ import com.viaversion.viaversion.api.type.Types;
+ import com.viaversion.viaversion.api.type.types.version.VersionedTypes;
++import com.viaversion.viaversion.libs.fastutil.ints.Int2ObjectMap;
+ import com.viaversion.viaversion.libs.fastutil.ints.IntObjectPair;
+ import com.viaversion.viaversion.libs.mcstructs.converter.impl.v1_21_5.NbtConverter_v1_21_5;
+ import com.viaversion.viaversion.libs.mcstructs.core.Identifier;
+@@ -48,6 +50,9 @@ import com.viaversion.viaversion.libs.mcstructs.text.components.StringComponent;
+ import com.viaversion.viaversion.libs.mcstructs.text.components.TranslationComponent;
+ import com.viaversion.viaversion.protocols.v26_2to26_3.packet.ClientboundPackets26_3;
+ import com.viaversion.viaversion.protocols.v26_2to26_3.packet.ServerboundPackets26_3;
++import io.netty.buffer.ByteBuf;
++import io.netty.buffer.ByteBufUtil;
++import io.netty.buffer.Unpooled;
+ import net.lenni0451.mcstructs_bedrock.forms.Form;
+ import net.lenni0451.mcstructs_bedrock.forms.elements.*;
+ import net.lenni0451.mcstructs_bedrock.forms.serializer.FormSerializer;
+@@ -59,7 +64,9 @@ import net.raphimc.viabedrock.ViaBedrock;
+ import net.raphimc.viabedrock.api.chunk.BedrockBlockEntity;
+ import net.raphimc.viabedrock.api.model.container.ChestContainer;
+ import net.raphimc.viabedrock.api.model.container.Container;
++import net.raphimc.viabedrock.api.model.container.player.ArmorContainer;
+ import net.raphimc.viabedrock.api.model.container.player.InventoryContainer;
++import net.raphimc.viabedrock.api.model.container.player.OffhandContainer;
+ import net.raphimc.viabedrock.api.model.entity.Entity;
+ import net.raphimc.viabedrock.api.util.PacketFactory;
+ import net.raphimc.viabedrock.api.util.TextUtil;
+@@ -85,6 +92,179 @@ public final class InventoryPackets {
+     private static final int DIALOG_FAKE_BUTTON_WIDTH = 300;
+     private static final String DIALOG_FAKE_BUTTON_TEXT = "This is not actually a button, but has to be one because dialogs don't support adding text only elements. Clicking it has the same effect as closing the dialog.";
+ 
++    // .13-exp diagnostics: all of them are disabled (empty property / "full" mode) in production builds.
++    private static final String CONTROL_PATH = System.getProperty("mpmc.req.control", "");
++    private static final String CREATIVE_DUMP = System.getProperty("mpmc.creative.dump", "");
++    private static final java.util.Map<Integer, String> REQ_INFO = new java.util.concurrent.ConcurrentHashMap<>();
++
++    // Measured on live BDS 1.26.51 (protocol 2193) across 78 creative-slot cases
++    // (gw-data/sweep-equip-boundary*-result.json): equipment containers only accept
++    // items carrying the matching equippable component. Every other item is rejected
++    // with status 55 = CannotPlaceItem. Java creative allows arbitrary items in those
++    // slots, so the gateway classifies and skips the request instead of emitting a
++    // packet the host is guaranteed to reject.
++    // Offhand accepted: shield, totem_of_undying, arrow (all Java arrow variants map
++    // to this Bedrock id), firework_rocket, nautilus_shell.
++    private static final java.util.Set<String> OFFHAND_EQUIPPABLE = java.util.Set.of(
++            "minecraft:shield", "minecraft:totem_of_undying", "minecraft:arrow",
++            "minecraft:firework_rocket", "minecraft:nautilus_shell");
++
++    // Java item variants with no Bedrock CREATIVE_CONTENT entry of their own.
++    // Bedrock 1.26.51 lists minecraft:empty_map (and minecraft:arrow metadata
++    // variants) but not minecraft:filled_map / minecraft:spectral_arrow.
++    // spectrum_arrow is handled in ItemRewriter.bedrockItem() (Java->Bedrock alias).
++    private static final java.util.Map<String, String> CREATIVE_ENTRY_ALIASES = java.util.Map.of(
++            "minecraft:filled_map", "minecraft:empty_map");
++
++    private static boolean isBedrockEquippable(final ContainerEnumName containerName, final int containerSlot, final String bedrockId) {
++        if (bedrockId == null || bedrockId.isEmpty()) {
++            return false;
++        }
++        if (containerName == ContainerEnumName.OffhandContainer) {
++            return OFFHAND_EQUIPPABLE.contains(bedrockId);
++        }
++        if (containerName != ContainerEnumName.ArmorContainer) {
++            return true; // normal inventory accepts every creative item
++        }
++        return switch (containerSlot) {
++            case 0 -> bedrockId.endsWith("_helmet") || bedrockId.endsWith("_head")
++                    || bedrockId.endsWith("_skull") || bedrockId.equals("minecraft:carved_pumpkin");
++            case 1 -> bedrockId.endsWith("_chestplate") || bedrockId.equals("minecraft:elytra");
++            case 2 -> bedrockId.endsWith("_leggings");
++            case 3 -> bedrockId.endsWith("_boots");
++            default -> false; // Body slot (4) is not visible to Java clients
++        };
++    }
++
++    private static int findCreativeEntryByIdentifier(final InventoryTracker tracker, final ItemRewriter itemRewriter, final String bedrockId) {
++        for (final Int2ObjectMap.Entry<BedrockItem> entry : tracker.getCreativeItems().int2ObjectEntrySet()) {
++            if (bedrockId.equals(itemRewriter.bedrockIdentifier(entry.getValue().identifier()))) {
++                return entry.getIntKey();
++            }
++        }
++        return -1;
++    }
++
++    /**
++     * A creative slot update that BDS cannot accept is resolved locally instead of
++     * being dropped silently or sent anyway (which produces a status 55/49 rejection).
++     * keepOptimistic=true keeps the Java client's item when Bedrock simply has no
++     * creative entry; false restores the previous item when BDS actively refuses the
++     * destination. In both cases the Java container is echoed so the client stays in
++     * sync with the gateway, and the in-flight guard is released so queued clicks drain.
++     */
++    private static void skipCreativeRequest(final UserConnection user, final InventoryTracker tracker,
++                                            final ContainerEnumName containerName, final int containerSlot,
++                                            final int javaSlot, final BedrockItem newItem, final BedrockItem oldItem,
++                                            final String reason, final boolean keepOptimistic) {
++        final Container container = creativeContainer(tracker, containerName);
++        if (containerSlot >= 0 && containerSlot < container.size()) {
++            container.setItem(containerSlot, keepOptimistic && !newItem.isEmpty() ? newItem.copy() : oldItem);
++        }
++        ViaBedrock.getPlatform().getLogger().log(Level.INFO, "[CLASSIFIED] creative slot " + javaSlot
++                + " -> " + containerName + "/" + containerSlot + " not sent to BDS: " + reason
++                + " (javaItem=" + (newItem.isEmpty() ? "<unmapped>" : newItem.identifier()) + ")");
++        PacketFactory.sendJavaContainerSetContent(user, tracker.getInventoryContainer());
++        final long key = creativeSlotKey(containerName, containerSlot);
++        tracker.getInFlightCreativeSlots().remove(key);
++        flushDeferredCreativeSlot(user, key);
++    }
++
++    private static final class ReqConfig {
++        String mode = "full";
++        int force = -1;
++        int amount = -1;
++        int crafts = 1;
++        boolean resultsFromCreative;
++        boolean reset;
++        String note = "control-off";
++        // Diagnostic knobs for the ITEM_STACK_REQUEST transfer-action chain.
++        // In production the control file is absent, so every value below is the
++        // default and the wire encoding is identical to the released build.
++        String dstContainer = "";
++        int dstSlot = -1;
++        int dstNetId = 0;
++        String srcContainer = "";
++        int srcSlot = 50;
++        int srcNetId = Integer.MIN_VALUE;
++        String midContainer = "";
++        int midSlot = 0;
++        int midNetId = Integer.MIN_VALUE;
++        boolean swap;
++
++        ContainerEnumName dst(final ContainerEnumName fallback) {
++            return this.dstContainer.isEmpty() ? fallback : parseContainer(this.dstContainer, fallback);
++        }
++
++        ContainerEnumName src() {
++            return this.srcContainer.isEmpty() ? ContainerEnumName.CreatedOutputContainer : parseContainer(this.srcContainer, ContainerEnumName.CreatedOutputContainer);
++        }
++
++        ContainerEnumName mid() {
++            return this.midContainer.isEmpty() ? null : parseContainer(this.midContainer, null);
++        }
++
++        private static ContainerEnumName parseContainer(final String name, final ContainerEnumName fallback) {
++            try {
++                return ContainerEnumName.valueOf(name);
++            } catch (final IllegalArgumentException e) {
++                return fallback;
++            }
++        }
++
++        boolean craftCreative() { return !this.mode.equals("no-cc") && !this.mode.equals("results-only"); }
++        boolean results() { return !this.mode.equals("cc-only") && !this.mode.equals("cc-destroy-take") && !this.mode.equals("create"); }
++        boolean create() { return this.mode.equals("create"); }
++        boolean destroy() { return !this.mode.equals("no-destroy") && !this.mode.equals("cc-results-take") && !this.mode.equals("cc-only") && !this.mode.equals("results-only"); }
++        boolean take() { return !this.mode.equals("no-take"); }
++        boolean place() { return this.mode.equals("place"); }
++        boolean emptyDescriptor() { return this.mode.equals("empty-descriptor"); }
++        boolean descriptorFromCreative() { return this.resultsFromCreative || this.mode.equals("descriptor-match"); }
++        int count(final int original) { return this.mode.equals("amount1") ? 1 : (this.amount > 0 ? this.amount : original); }
++    }
++
++    private static ReqConfig readControl() {
++        final ReqConfig cfg = new ReqConfig();
++        if (CONTROL_PATH.isEmpty()) {
++            return cfg;
++        }
++        try {
++            final String line = new String(java.nio.file.Files.readAllBytes(java.nio.file.Paths.get(CONTROL_PATH)), java.nio.charset.StandardCharsets.UTF_8).trim();
++            if (line.isEmpty()) {
++                return cfg;
++            }
++            cfg.note = line;
++            for (final String part : line.split("[,;]+")) {
++                final String[] kv = part.split("=", 2);
++                if (kv.length != 2) continue;
++                final String key = kv[0].trim();
++                final String value = kv[1].trim();
++                switch (key) {
++                    case "mode" -> cfg.mode = value;
++                    case "force" -> cfg.force = Integer.parseInt(value);
++                    case "amount" -> cfg.amount = Integer.parseInt(value);
++                    case "crafts" -> cfg.crafts = Integer.parseInt(value);
++                    case "resultsFromCreative" -> cfg.resultsFromCreative = Boolean.parseBoolean(value);
++                    case "reset" -> cfg.reset = Boolean.parseBoolean(value);
++                    case "dst" -> cfg.dstContainer = value;
++                    case "dstSlot" -> cfg.dstSlot = Integer.parseInt(value);
++                    case "dstNetId" -> cfg.dstNetId = Integer.parseInt(value);
++                    case "src" -> cfg.srcContainer = value;
++                    case "srcSlot" -> cfg.srcSlot = Integer.parseInt(value);
++                    case "srcNetId" -> cfg.srcNetId = Integer.parseInt(value);
++                    case "mid" -> cfg.midContainer = value;
++                    case "midSlot" -> cfg.midSlot = Integer.parseInt(value);
++                    case "midNetId" -> cfg.midNetId = Integer.parseInt(value);
++                    case "swap" -> cfg.swap = Boolean.parseBoolean(value);
++                    default -> { }
++                }
++            }
++        } catch (final Exception ignored) {
++            // A malformed/transient control file must never break a player's inventory request.
++        }
++        return cfg;
++    }
++
+     public static void register(final BedrockProtocol protocol) {
+         protocol.registerClientbound(ClientboundBedrockPackets.CONTAINER_OPEN, ClientboundPackets26_3.OPEN_SCREEN, wrapper -> {
+             final ChunkTracker chunkTracker = wrapper.user().get(ChunkTracker.class);
+@@ -189,6 +369,10 @@ public final class InventoryPackets {
+             final InventoryTracker inventoryTracker = wrapper.user().get(InventoryTracker.class);
+             final Container container = inventoryTracker.getContainerClientbound((byte) containerId, containerName, storageItem);
+             if (container != null && container.setItem(slot, item)) {
++                if (!container.isJavaVisible(slot)) {
++                    wrapper.cancel();
++                    return;
++                }
+                 if (container.type() == ContainerType.HUD && slot == 0) { // cursor item
+                     wrapper.setPacketType(ClientboundPackets26_3.SET_CURSOR_ITEM);
+                 } else {
+@@ -435,15 +619,110 @@ public final class InventoryPackets {
+         });
+         protocol.registerServerbound(ServerboundPackets26_3.SET_CREATIVE_MODE_SLOT, null, wrapper -> {
+             wrapper.cancel();
+-            wrapper.read(Types.SHORT); // slot
+-            wrapper.read(VersionedTypes.V26_3.lengthPrefixedItem); // item
++            final int javaSlot = wrapper.read(Types.SHORT); // slot
++            final Item javaItem = wrapper.read(VersionedTypes.V26_3.lengthPrefixedItem); // item
+ 
+             final InventoryTracker inventoryTracker = wrapper.user().get(InventoryTracker.class);
+             if (inventoryTracker.getPendingCloseContainer() != null) {
+-                wrapper.cancel();
+                 return;
+             }
+-            PacketFactory.sendJavaContainerSetContent(wrapper.user(), inventoryTracker.getInventoryContainer());
++            handleCreativeModeSlot(wrapper.user(), javaSlot, javaItem);
++        });
++        protocol.registerClientbound(ClientboundBedrockPackets.CREATIVE_CONTENT, null, wrapper -> {
++            wrapper.cancel();
++            final byte[] raw = wrapper.read(Types.REMAINING_BYTES);
++            final ItemRewriter itemRewriter = wrapper.user().get(ItemRewriter.class);
++            final InventoryTracker inventoryTracker = wrapper.user().get(InventoryTracker.class);
++            final ByteBuf buffer = Unpooled.wrappedBuffer(raw);
++            try {
++                final int groupCount = BedrockTypes.UNSIGNED_VAR_INT.read(buffer); // groups
++                final StringBuilder groups = new StringBuilder();
++                for (int i = 0; i < groupCount; i++) {
++                    final int category = buffer.readUnsignedByte(); // category
++                    final String name = BedrockTypes.STRING.read(buffer); // name
++                    final BedrockItem icon = itemRewriter.itemType().read(buffer); // icon item
++                    groups.append('[').append(i).append(" cat=").append(category).append(" name=").append(name).append(" icon=").append(icon.identifier()).append('x').append(icon.amount()).append(']');
++                }
++                final int itemCount = BedrockTypes.UNSIGNED_VAR_INT.read(buffer); // items
++                final StringBuilder dump = CREATIVE_DUMP.isEmpty() ? null : new StringBuilder("entryId\tbedrockId\tidentifier\tdata\tamount\tblockRuntimeId\thasTag\tgroupIndex\n");
++                for (int i = 0; i < itemCount; i++) {
++                    final int entryId = BedrockTypes.UNSIGNED_VAR_INT.read(buffer); // entry id
++                    final BedrockItem item = itemRewriter.itemType().read(buffer); // item
++                    final int groupIndex = BedrockTypes.UNSIGNED_VAR_INT.read(buffer); // group index
++                    if (!item.isEmpty()) {
++                        inventoryTracker.getCreativeItems().put(entryId, item);
++                    }
++                    if (dump != null) {
++                        dump.append(entryId).append('\t').append(item.identifier()).append('\t')
++                                .append(itemRewriter.bedrockIdentifier(item.identifier())).append('\t')
++                                .append(item.data() & 0xFFFF).append('\t').append(item.amount()).append('\t')
++                                .append(item.blockRuntimeId()).append('\t').append(item.tag() != null).append('\t')
++                                .append(groupIndex).append('\n');
++                    }
++                }
++                if (dump != null) {
++                    try {
++                        java.nio.file.Files.write(java.nio.file.Paths.get(CREATIVE_DUMP), dump.toString().getBytes(java.nio.charset.StandardCharsets.UTF_8));
++                        ViaBedrock.getPlatform().getLogger().log(Level.INFO, "CREATIVE_CONTENT dumped " + itemCount + " entries to " + CREATIVE_DUMP);
++                    } catch (final Exception e) {
++                        ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "CREATIVE_CONTENT dump failed: " + e);
++                    }
++                }
++                ViaBedrock.getPlatform().getLogger().log(Level.INFO, "CREATIVE_CONTENT parsed: groups=" + groupCount + " " + groups + " items=" + itemCount + " stored=" + inventoryTracker.getCreativeItems().size() + " remaining=" + buffer.readableBytes());
++            } catch (final Throwable t) {
++                ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "CREATIVE_CONTENT parse failed after " + buffer.readerIndex() + "/" + raw.length + " bytes: " + t, t);
++                ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "CREATIVE_CONTENT raw bytes: " + ByteBufUtil.hexDump(Unpooled.wrappedBuffer(raw, 0, Math.min(raw.length, 512))));
++            } finally {
++                buffer.release();
++            }
++        });
++        protocol.registerClientbound(ClientboundBedrockPackets.ITEM_STACK_RESPONSE, null, wrapper -> {
++            final InventoryTracker inventoryTracker = wrapper.user().get(InventoryTracker.class);
++            final int responseCount = wrapper.read(BedrockTypes.UNSIGNED_VAR_INT); // responses
++            for (int i = 0; i < responseCount; i++) {
++                final int status = wrapper.read(Types.UNSIGNED_BYTE); // status
++                final int requestId = wrapper.read(BedrockTypes.VAR_INT); // request id (zigzag32)
++                final InventoryTracker.PendingCreativeSlot pending = inventoryTracker.getPendingCreativeSlots().remove(requestId);
++
++                if (wrapper.read(Types.BOOLEAN)) { // has containers
++                    final int containerCount = wrapper.read(BedrockTypes.UNSIGNED_VAR_INT);
++                    for (int c = 0; c < containerCount; c++) {
++                        final FullContainerName containerName = wrapper.read(BedrockTypes.FULL_CONTAINER_NAME);
++                        final int slotCount = wrapper.read(BedrockTypes.UNSIGNED_VAR_INT);
++                        for (int s = 0; s < slotCount; s++) {
++                            final int slot = wrapper.read(Types.UNSIGNED_BYTE); // slot
++                            wrapper.read(Types.UNSIGNED_BYTE); // hotbar slot
++                            final int count = wrapper.read(Types.UNSIGNED_BYTE); // count
++                            final int stackId = wrapper.read(Types.BOOLEAN) ? wrapper.read(BedrockTypes.VAR_INT) : 0; // optional stack network id
++                            wrapper.read(BedrockTypes.STRING); // custom name
++                            wrapper.read(BedrockTypes.STRING); // filtered custom name
++                            wrapper.read(BedrockTypes.VAR_INT); // durability correction
++
++                            if (status == 0) {
++                                applyItemStackResponseSlot(inventoryTracker, pending, containerName.name(), slot, count, stackId);
++                            }
++                        }
++                    }
++                }
++
++                if (status != 0) {
++                    ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "Bedrock rejected item stack request " + requestId + " (status " + status + " = " + ItemStackNetResult.getByValue(status, ItemStackNetResult.Error) + ") cfg=" + REQ_INFO.remove(requestId));
++                    if (pending != null) {
++                        restoreCreativeSlot(wrapper.user(), inventoryTracker, pending);
++                    }
++                } else {
++                    ViaBedrock.getPlatform().getLogger().log(Level.INFO, "Bedrock accepted item stack request " + requestId + " cfg=" + REQ_INFO.remove(requestId));
++                }
++                if (pending != null) {
++                    // This response resolves the guard for the (container, slot). If the Java client
++                    // queued a second click while it was in flight, send it now that BDS has assigned
++                    // a real stack network id to the source item.
++                    final long key = creativeSlotKey(pending.container(), pending.slot());
++                    inventoryTracker.getInFlightCreativeSlots().remove(key);
++                    flushDeferredCreativeSlot(wrapper.user(), key);
++                }
++            }
++            wrapper.cancel();
+         });
+         protocol.registerServerbound(ServerboundPackets26_3.CUSTOM_CLICK_ACTION, ServerboundBedrockPackets.MODAL_FORM_RESPONSE, wrapper -> {
+             final String id = wrapper.read(Types.STRING); // id
+@@ -549,6 +828,486 @@ public final class InventoryPackets {
+         });
+     }
+ 
++    private static long creativeSlotKey(final ContainerEnumName containerName, final int containerSlot) {
++        return ((long) containerName.ordinal() << 32) | (containerSlot & 0xffffffffL);
++    }
++
++    private static void flushDeferredCreativeSlot(final UserConnection user, final long slotKey) {
++        final InventoryTracker tracker = user.get(InventoryTracker.class);
++        final java.util.ArrayDeque<InventoryTracker.DeferredCreativeSlot> queue = tracker.getDeferredCreativeSlots().get(slotKey);
++        while (queue != null && !queue.isEmpty()) {
++            final InventoryTracker.DeferredCreativeSlot next = queue.poll();
++            // The in-flight guard was already removed by the ITEM_STACK_RESPONSE handler,
++            // so this call sends the next queued request against a fully updated tracker.
++            handleCreativeModeSlot(user, next.javaSlot(), next.javaItem());
++            if (tracker.getInFlightCreativeSlots().containsKey(slotKey)) {
++                return; // request is in flight; the next response will flush the rest
++            }
++            // The queued request was dropped before being sent (invalid item / empty slot).
++            // Keep draining so a later valid click is not stuck behind it.
++        }
++    }
++
++    /**
++     * BDS 1.26.51 addresses the player's offhand item at OffhandContainer slot 1
++     * (this is also the slot OffhandContainer.onSlotChanged() writes into
++     * MOB_EQUIPMENT). ViaBedrock's OffhandContainer tracker has a single slot 0,
++     * so the slot used on the ITEM_STACK_REQUEST wire differs from the local
++     * tracker slot. Writing slot 0 on the wire makes BDS reject the request with
++     * status 50 FailedToValidateDstSlot / 55 CannotPlaceItem. Measured on live
++     * BDS: slot 0 rejected, slot 1 accepted and the item is really equipped
++     * (observer client receives entity_equipment slot=1 with the item).
++     */
++    private static int bedrockRequestSlot(final ContainerEnumName containerName, final int containerSlot) {
++        return containerName == ContainerEnumName.OffhandContainer ? 1 : containerSlot;
++    }
++
++    private static void handleCreativeModeSlot(final UserConnection user, final int javaSlot, final Item javaItem) {
++        final InventoryTracker inventoryTracker = user.get(InventoryTracker.class);
++        final ContainerEnumName containerName = creativeSlotContainer(javaSlot);
++        if (containerName == null) {
++            ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "Unhandled creative mode slot: " + javaSlot);
++            return;
++        }
++        final int containerSlot = creativeSlotIndex(javaSlot);
++        final Container container = creativeContainer(inventoryTracker, containerName);
++        if (containerSlot < 0 || containerSlot >= container.size()) {
++            ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "Creative mode slot " + javaSlot + " maps to out of bounds slot " + containerSlot);
++            return;
++        }
++        final int requestSlot = bedrockRequestSlot(containerName, containerSlot);
++
++        // A real Java 1.21.1 GUI client sends two SET_CREATIVE_MODE_SLOT packets per click.
++        // If a Bedrock ITEM_STACK_REQUEST for this (container, slot) is still awaiting its
++        // ITEM_STACK_RESPONSE, the optimistic source stack has no server-side network id yet
++        // and BDS rejects the follow-up with status 49 (FailedToValidateSrcSlot). Queue it and
++        // flush it only after the previous response has applied the real net id. This also
++        // prevents two craft-action chains from being validated in the same server tick.
++        final long slotKey = creativeSlotKey(containerName, containerSlot);
++        final long now = System.currentTimeMillis();
++        final Long inFlightSince = inventoryTracker.getInFlightCreativeSlots().get(slotKey);
++        if (inFlightSince != null && now - inFlightSince <= 5000L) {
++            inventoryTracker.getDeferredCreativeSlots()
++                    .computeIfAbsent(slotKey, k -> new java.util.ArrayDeque<>())
++                    .add(new InventoryTracker.DeferredCreativeSlot(javaSlot, javaItem));
++            // Keep the Java client's view optimistic while Bedrock is still processing.
++            container.setItem(containerSlot, user.get(ItemRewriter.class).bedrockItem(javaItem).copy());
++            PacketFactory.sendJavaContainerSetContent(user, inventoryTracker.getInventoryContainer());
++            return;
++        }
++        if (inFlightSince != null) {
++            // BDS never answered within 5 s: abandon the stale guard so new clicks are not stuck.
++            ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "Creative slot " + javaSlot + " request timed out, dropping stale in-flight guard");
++            inventoryTracker.getInFlightCreativeSlots().remove(slotKey);
++        }
++        inventoryTracker.getInFlightCreativeSlots().put(slotKey, now);
++
++        final ReqConfig cfg = readControl();
++        if (cfg.reset) {
++            container.setItem(containerSlot, BedrockItem.empty());
++        }
++        final ItemRewriter itemRewriter = user.get(ItemRewriter.class);
++        BedrockItem newItem = itemRewriter.bedrockItem(javaItem);
++        final BedrockItem oldItem = container.getItem(containerSlot).copy();
++        if (cfg.force >= 0) {
++            final BedrockItem forced = inventoryTracker.getCreativeItems().get(cfg.force);
++            if (forced == null) {
++                ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "Forced creative entry " + cfg.force + " not found");
++                inventoryTracker.getInFlightCreativeSlots().remove(slotKey);
++                return;
++            }
++            newItem = forced.copy();
++        }
++        if (cfg.amount > 0) {
++            newItem.setAmount(cfg.amount);
++        }
++        if (newItem.isEmpty() && !javaItem.isEmpty()) {
++            // ItemRewriter could not map this Java item to any Bedrock item. Previously
++            // this fell through into the empty+empty branch and the click vanished with
++            // no feedback at all ("cannot take items"). Classify it explicitly.
++            skipCreativeRequest(user, inventoryTracker, containerName, containerSlot, javaSlot,
++                    newItem, oldItem, "no Java -> Bedrock item mapping", false);
++            return;
++        }
++        if (newItem.isEmpty() && oldItem.isEmpty()) {
++            inventoryTracker.getInFlightCreativeSlots().remove(slotKey);
++            return;
++        }
++
++        int creativeEntryId = -1;
++        BedrockItem creativeItem = null;
++        if (!newItem.isEmpty()) {
++            creativeEntryId = cfg.force >= 0 ? cfg.force : findCreativeEntry(inventoryTracker, newItem);
++            if (creativeEntryId == -1 && cfg.force < 0) {
++                final String originalBedrockId = itemRewriter.bedrockIdentifier(newItem.identifier());
++                final String alias = CREATIVE_ENTRY_ALIASES.get(originalBedrockId);
++                if (alias != null) {
++                    final int aliasId = findCreativeEntryByIdentifier(inventoryTracker, itemRewriter, alias);
++                    if (aliasId >= 0) {
++                        creativeEntryId = aliasId;
++                        // Use the real Bedrock creative item as the request result so the
++                        // CraftResults descriptor matches what BDS can actually create.
++                        newItem = inventoryTracker.getCreativeItems().get(aliasId).copy();
++                        ViaBedrock.getPlatform().getLogger().log(Level.INFO, "[CLASSIFIED] creative alias "
++                                + originalBedrockId + " -> " + itemRewriter.bedrockIdentifier(newItem.identifier())
++                                + " for Java item " + javaItem.identifier());
++                    }
++                }
++            }
++            creativeItem = inventoryTracker.getCreativeItems().get(creativeEntryId);
++            if (creativeEntryId == -1 || creativeItem == null) {
++                // Bedrock has no CREATIVE_CONTENT entry for this item. Keep the Java
++                // client's optimistic view (it still "takes" the item) but never send a
++                // request BDS cannot answer; record the semantic downgrade explicitly.
++                skipCreativeRequest(user, inventoryTracker, containerName, containerSlot, javaSlot,
++                        newItem, oldItem, "no Bedrock CREATIVE_CONTENT entry", true);
++                return;
++            }
++        }
++        // Measured on live BDS 1.26.51 (protocol 2193), jar .14: the same creative
++        // ITEM_STACK_REQUEST layout (actions=3, crafts=1) is accepted with count 64
++        // (status 0) but terminates the connection with
++        // "Packet violation warning: PacketMalformed" for count 65/100/127.
++        // Java creative lets the client send an amount above max_stack_size, so clamp
++        // the wire amount to 64 before writing CraftResults / Take. The optimistic
++        // container keeps the requested amount; ITEM_STACK_RESPONSE reconciles it.
++        // Counts >=128 never reach this code (the Java encoder drops them first).
++        final int count = clampStackCount(cfg.count(newItem.amount()), newItem);
++        final BedrockItem resultItem = cfg.descriptorFromCreative() && creativeItem != null ? creativeItem : newItem;
++        final String descriptor = resultItem.isEmpty() ? "<empty>" : String.valueOf(itemRewriter.bedrockIdentifier(resultItem.identifier()));
++
++        if (!newItem.isEmpty() && !isBedrockEquippable(containerName, containerSlot,
++                itemRewriter.bedrockIdentifier(newItem.identifier()))) {
++            // Live BDS 1.26.51 returns status 55 CannotPlaceItem for every non-equippable
++            // item placed into ArmorContainer / OffhandContainer. Restore the slot instead
++            // of emitting a request the host is guaranteed to reject.
++            skipCreativeRequest(user, inventoryTracker, containerName, containerSlot, javaSlot,
++                    newItem, oldItem, "BDS rejects " + itemRewriter.bedrockIdentifier(newItem.identifier())
++                            + " in " + containerName + "/" + containerSlot + " (status 55)", false);
++            return;
++        }
++
++        final int requestId = inventoryTracker.nextItemStackRequestId();
++
++        // Item stack requests are validated against the screen the server thinks is open. The Bedrock
++        // inventory screen is only opened after the client sends Interact(OpenInventory), so make sure
++        // it is open before sending our first request (the Java client has no equivalent packet).
++        if (inventoryTracker.getCurrentContainer() == null && inventoryTracker.getPendingCloseContainer() == null) {
++            final PacketWrapper openInventory = PacketWrapper.create(ServerboundBedrockPackets.INTERACT, user);
++            openInventory.write(Types.UNSIGNED_BYTE, (short) InteractPacketPayload_Action.OpenInventory.getValue()); // action
++            openInventory.write(BedrockTypes.UNSIGNED_VAR_LONG, user.get(EntityTracker.class).getClientPlayer().runtimeId()); // target entity runtime id
++            openInventory.write(BedrockTypes.OPTIONAL_POSITION_3F, null); // position
++            openInventory.sendToServer(BedrockProtocol.class);
++        }
++
++        final boolean doDestroy = cfg.destroy() && !oldItem.isEmpty();
++        final ContainerEnumName midContainer = cfg.mid();
++        final int transferActions = cfg.take() && !newItem.isEmpty() ? (midContainer != null ? 2 : 1) : 0;
++        final int actionCount = (cfg.craftCreative() && !newItem.isEmpty() ? 1 : 0)
++                + (cfg.results() && !newItem.isEmpty() ? 1 : 0)
++                + (cfg.create() && !newItem.isEmpty() ? 1 : 0)
++                + (doDestroy ? 1 : 0)
++                + transferActions;
++
++        final PacketWrapper request = PacketWrapper.create(ServerboundBedrockPackets.ITEM_STACK_REQUEST, user);
++        request.write(BedrockTypes.UNSIGNED_VAR_INT, 1); // requests
++        request.write(BedrockTypes.VAR_INT, requestId); // request id (zigzag32)
++        request.write(BedrockTypes.UNSIGNED_VAR_INT, actionCount); // actions
++
++        // The vanilla client always sends CraftCreative -> CraftResultsDeprecated -> (Destroy) -> Take/Place.
++        if (cfg.craftCreative() && !newItem.isEmpty()) {
++            writeItemStackRequestAction(request, ItemStackRequestActionType.CraftCreative);
++            request.write(BedrockTypes.UNSIGNED_VAR_INT, creativeEntryId); // creative item network id
++            request.write(Types.UNSIGNED_BYTE, (short) clampStackCount(cfg.crafts)); // times crafted
++        }
++        if (cfg.results() && !newItem.isEmpty()) {
++            writeItemStackRequestAction(request, ItemStackRequestActionType.CraftResults);
++            request.write(BedrockTypes.UNSIGNED_VAR_INT, 1); // result items
++            writeStackRequestItem(request, itemRewriter, resultItem, count, cfg.emptyDescriptor());
++            request.write(Types.UNSIGNED_BYTE, (short) clampStackCount(cfg.crafts)); // times crafted
++        }
++        if (cfg.create() && !newItem.isEmpty()) {
++            writeItemStackRequestAction(request, ItemStackRequestActionType.Create);
++            request.write(Types.UNSIGNED_BYTE, (short) 0); // results slot
++        }
++        if (doDestroy) {
++            writeItemStackRequestAction(request, ItemStackRequestActionType.Destroy);
++            request.write(Types.UNSIGNED_BYTE, (short) clampStackCount(oldItem.amount(), oldItem)); // count
++            writeItemStackRequestSlot(request, containerName, requestSlot, oldItem.netId() != null ? oldItem.netId() : 0); // source
++        }
++        if (cfg.take() && !newItem.isEmpty()) {
++            final ContainerEnumName dstContainer = cfg.dst(containerName);
++            final int dstSlot = cfg.dstSlot >= 0 ? cfg.dstSlot : bedrockRequestSlot(dstContainer, containerSlot);
++            final int srcNetId = cfg.srcNetId == Integer.MIN_VALUE ? creativeTakeSourceStackId(requestId) : cfg.srcNetId;
++            final int midNetId = cfg.midNetId == Integer.MIN_VALUE ? creativeTakeSourceStackId(requestId) : cfg.midNetId;
++            if (midContainer != null) {
++                // Diagnostic two-step chain: create -> intermediate container -> equipment slot.
++                writeItemStackRequestAction(request, ItemStackRequestActionType.Take);
++                request.write(Types.UNSIGNED_BYTE, (short) count); // count
++                writeItemStackRequestSlot(request, ContainerEnumName.CreatedOutputContainer, 50, srcNetId); // source
++                writeItemStackRequestSlot(request, midContainer, cfg.midSlot, 0); // intermediate destination
++
++                writeItemStackRequestAction(request, ItemStackRequestActionType.Place);
++                request.write(Types.UNSIGNED_BYTE, (short) count); // count
++                writeItemStackRequestSlot(request, midContainer, cfg.midSlot, midNetId); // intermediate source
++                writeItemStackRequestSlot(request, dstContainer, dstSlot, cfg.dstNetId); // destination
++            } else if (cfg.swap) {
++                writeItemStackRequestAction(request, ItemStackRequestActionType.Swap);
++                writeItemStackRequestSlot(request, cfg.src(), cfg.srcSlot, srcNetId); // source
++                writeItemStackRequestSlot(request, dstContainer, dstSlot, cfg.dstNetId); // destination
++            } else {
++                writeItemStackRequestAction(request, cfg.place() ? ItemStackRequestActionType.Place : ItemStackRequestActionType.Take);
++                request.write(Types.UNSIGNED_BYTE, (short) count); // count
++                // Stacks created by the current request are referenced by the request id, which doubles
++                // as their stack network id. Slots address it with the created output protocol slot 50.
++                writeItemStackRequestSlot(request, cfg.src(), cfg.srcSlot, srcNetId); // source
++                writeItemStackRequestSlot(request, dstContainer, dstSlot, cfg.dstNetId); // destination
++            }
++        }
++
++        request.write(BedrockTypes.UNSIGNED_VAR_INT, 0); // custom names
++        request.write(BedrockTypes.INT_LE, 0); // filter cause
++        request.sendToServer(BedrockProtocol.class);
++
++        final String info = "cfg=" + cfg.note + " mode=" + cfg.mode + " creativeId=" + creativeEntryId
++                + " newId=" + newItem.identifier() + " newIdentifier=" + itemRewriter.bedrockIdentifier(newItem.identifier())
++                + " newData=" + (newItem.data() & 0xFFFF) + " newBlockRuntimeId=" + newItem.blockRuntimeId()
++                + " amount=" + newItem.amount() + " count=" + count + " descriptor=" + descriptor
++                + " descriptorId=" + resultItem.identifier() + " descriptorData=" + (resultItem.data() & 0xFFFF)
++                + " descriptorBlockRuntimeId=" + resultItem.blockRuntimeId()
++                + " creativeEntryId=" + (creativeItem == null ? -1 : creativeItem.identifier())
++                + " creativeEntryData=" + (creativeItem == null ? -1 : (creativeItem.data() & 0xFFFF))
++                + " creativeEntryBlockRuntimeId=" + (creativeItem == null ? -1 : creativeItem.blockRuntimeId())
++                + " actions=" + actionCount + " crafts=" + cfg.crafts;
++        REQ_INFO.put(requestId, info);
++        ViaBedrock.getPlatform().getLogger().log(Level.INFO, "Creative slot " + javaSlot + " -> " + containerName + "/" + containerSlot
++                + " request=" + requestId + " srcStack=" + creativeTakeSourceStackId(requestId)
++                + " new=" + newItem.identifier() + ":" + newItem.data() + "x" + newItem.amount()
++                + " old=" + oldItem.identifier() + ":" + oldItem.data() + "x" + oldItem.amount()
++                + " oldNetId=" + oldItem.netId() + " " + info);
++        inventoryTracker.getPendingCreativeSlots().put(requestId, new InventoryTracker.PendingCreativeSlot(containerName, containerSlot, oldItem, newItem.copy()));
++        container.setItem(containerSlot, newItem.copy()); // optimistic update until the server responds
++
++        // Java 1.21-1.21.1 waits for a server-side slot ack after SET_CREATIVE_MODE_SLOT;
++        // 1.21.2+ clients apply the slot optimistically (mineflayer feature
++        // "noAckOnCreateSetSlotPacket"). Bedrock's ITEM_STACK_RESPONSE only updates our
++        // own tracker and never emits a Java CONTAINER_SET_SLOT, so without this echo the
++        // old Java client sees no inventory update at all ("cannot take items"). Echo the
++        // full container content, exactly as restoreCreativeSlot does when BDS rejects
++        // the request; that later restore still wins if the request fails.
++        PacketFactory.sendJavaContainerSetContent(user, inventoryTracker.getInventoryContainer());
++    }
++
++    private static ContainerEnumName creativeSlotContainer(final int javaSlot) {
++        if (javaSlot >= 9 && javaSlot <= 44) { // hotbar and main inventory
++            return ContainerEnumName.CombinedHotbarAndInventoryContainer;
++        } else if (javaSlot >= 5 && javaSlot <= 8) { // armor
++            return ContainerEnumName.ArmorContainer;
++        } else if (javaSlot == 45) { // offhand
++            return ContainerEnumName.OffhandContainer;
++        }
++        return null;
++    }
++
++    private static int creativeSlotIndex(final int javaSlot) {
++        if (javaSlot >= 36 && javaSlot <= 44) {
++            return javaSlot - 36;
++        } else if (javaSlot >= 9 && javaSlot <= 35) {
++            return javaSlot;
++        } else if (javaSlot >= 5 && javaSlot <= 8) {
++            return javaSlot - 5;
++        } else if (javaSlot == 45) {
++            return 0;
++        }
++        return -1;
++    }
++
++    private static Container creativeContainer(final InventoryTracker inventoryTracker, final ContainerEnumName containerName) {
++        if (containerName == ContainerEnumName.ArmorContainer) {
++            return inventoryTracker.getArmorContainer();
++        } else if (containerName == ContainerEnumName.OffhandContainer) {
++            return inventoryTracker.getOffhandContainer();
++        } else {
++            return inventoryTracker.getInventoryContainer();
++        }
++    }
++
++    private static int findCreativeEntry(final InventoryTracker inventoryTracker, final BedrockItem item) {
++        int fallback = -1;
++        for (Int2ObjectMap.Entry<BedrockItem> entry : inventoryTracker.getCreativeItems().int2ObjectEntrySet()) {
++            final BedrockItem creativeItem = entry.getValue();
++            if (creativeItem.identifier() == item.identifier() && creativeItem.data() == item.data()) {
++                return entry.getIntKey();
++            } else if (fallback == -1 && creativeItem.identifier() == item.identifier()) {
++                fallback = entry.getIntKey();
++            }
++        }
++        return fallback;
++    }
++
++    private static void writeItemStackRequestAction(final PacketWrapper wrapper, final ItemStackRequestActionType type) {
++        final int id = type.getValue();
++        wrapper.write(BedrockTypes.UNSIGNED_VAR_INT, id <= 6 ? id : id - 2); // action variant (PlaceInContainer/TakeOutContainer are never sent)
++        wrapper.write(Types.UNSIGNED_BYTE, (short) id); // legacy action id
++    }
++
++    private static void writeItemStackRequestSlot(final PacketWrapper wrapper, final ContainerEnumName containerName, final int slot, final int stackId) {
++        wrapper.write(BedrockTypes.FULL_CONTAINER_NAME, new FullContainerName(containerName, null));
++        wrapper.write(Types.UNSIGNED_BYTE, (short) slot);
++        wrapper.write(BedrockTypes.INT_LE, stackId);
++    }
++
++    private static void writeStackRequestItem(final PacketWrapper wrapper, final ItemRewriter itemRewriter, final BedrockItem item, final int count) {
++        writeStackRequestItem(wrapper, itemRewriter, item, count, false);
++    }
++
++    private static void writeStackRequestItem(final PacketWrapper wrapper, final ItemRewriter itemRewriter, final BedrockItem item, final int count, final boolean emptyDescriptor) {
++        final String identifier = itemRewriter.bedrockIdentifier(item.identifier());
++        final boolean present = !emptyDescriptor && identifier != null && !item.isEmpty();
++        wrapper.write(BedrockTypes.UNSIGNED_VAR_INT, present ? 1 : 0); // item descriptor variant (1 = name)
++        wrapper.write(Types.UNSIGNED_BYTE, (short) (present ? 1 : 0)); // legacy descriptor variant
++        if (present) {
++            wrapper.write(BedrockTypes.STRING, identifier); // item identifier
++            wrapper.write(BedrockTypes.VAR_INT, item.data() & 0xFFFF); // metadata (zigzag32)
++        }
++        // BDS rejects count=0 as well: even an empty descriptor must carry a count in [1, 64].
++        wrapper.write(BedrockTypes.SHORT_LE, (short) clampStackCount(count, item)); // count
++        wrapper.write(BedrockTypes.UNSIGNED_VAR_INT, present ? item.blockRuntimeId() : 0); // block runtime id
++        if (!present) {
++            // gophertunnel's itemUserData(present=false) writes a single zero-length varuint32.
++            wrapper.write(BedrockTypes.UNSIGNED_VAR_INT, 0); // extra data length
++            return;
++        }
++        // ItemExtraDataWithoutBlockingTick: has_nbt (lu16) + two li32-prefixed string arrays.
++        final boolean shield = identifier.equals("minecraft:shield");
++        wrapper.write(BedrockTypes.UNSIGNED_VAR_INT, shield ? 18 : 10); // extra data length
++        wrapper.write(BedrockTypes.SHORT_LE, (short) 0); // has nbt = false
++        wrapper.write(BedrockTypes.INT_LE, 0); // can place on (empty)
++        wrapper.write(BedrockTypes.INT_LE, 0); // can break (empty)
++        if (shield) {
++            wrapper.write(BedrockTypes.LONG_LE, item.blockingTicks()); // blocking tick
++        }
++    }
++
++    /**
++     * BDS 1.26.51 (protocol 2193) validates every stack count / times-crafted field of
++     * ITEM_STACK_REQUEST (packet id 147) against [1, 64]. A value outside terminates the
++     * connection with "Packet violation warning: PacketMalformed ... the input is outside
++     * of the accepted range [1, 64]". Measured on the live host with count=65/100/127 and
++     * with an empty CraftResults descriptor (which used to write count=0).
++     *
++     * Additionally, BDS validates an item amount against THAT ITEM'S OWN max stack size:
++     * egg / snowball / ender_pearl (max 16) are rejected with
++     * "status 51 = InvalidAdjustedAmount" when the request carries 32 / 64 / 65, even
++     * though 64 is inside the generic [1,64] range. Measured 2026-11-12 on BDS 1.26.51
++     * with jar .16: egg16 accepted, egg32 / egg64 / egg65(clamped to 64) / snowball32 /
++     * pearl64 all status 51. Item-count fields therefore use the per-item overload;
++     * timesCrafted (a recipe counter, not an item stack) keeps the generic [1,64] clamp.
++     */
++    private static int clampStackCount(final int value) {
++        return Math.max(1, Math.min(value, 64));
++    }
++
++    private static int clampStackCount(final int value, final BedrockItem item) {
++        return clampStackCount(value, item == null || item.isEmpty() ? Integer.MIN_VALUE : item.identifier());
++    }
++
++    private static int clampStackCount(final int value, final int bedrockId) {
++        final Integer limit = BEDROCK_STACK_LIMITS.get(bedrockId);
++        return Math.max(1, Math.min(value, limit == null ? 64 : limit));
++    }
++
++    /**
++     * Bedrock 1.26.51 max stack sizes for items whose limit is below 64.
++     * Generated from minecraft-data/minecraft-data/data/bedrock/1.26.51/items.json
++     * (field "stackSize"): 2076 items = 1788 with 64, 54 with 16, 234 with 1.
++     * Only the 288 non-64 entries are stored; an unknown id defaults to 64.
++     * Format "bedrockId:stackSize,...". Ids may be negative (component items).
++     * Clamping to a smaller limit is safe: it never produces a malformed packet,
++     * at worst it under-delivers items for an id whose runtime limit differs.
++     */
++    private static final String BEDROCK_STACK_LIMITS_DATA =
++            "-1130:16,-993:16,-627:1,-626:1,-625:1,-624:1,-623:1,-622:1,-621:1,-620:1,-619:1,-618:1,-617:1,-616:1," +
++            "-615:1,-614:1,-613:1,-534:16,-522:16,-508:16,-507:16,-506:16,-505:16,-504:16,-503:16,-502:16,-501:16," +
++            "-500:16,205:1,218:1,260:1,286:1,290:1,298:1,299:1,300:1,301:1,302:1,309:1,310:1,311:1,312:1,313:1," +
++            "314:1,315:1,316:1,317:1,318:1,319:1,320:1,321:1,322:1,325:1,326:1,327:1,328:1,332:1,333:1,334:1," +
++            "335:1,336:1,338:1,339:1,340:1,341:1,342:1,343:1,344:1,345:1,346:1,347:1,348:1,349:1,350:1,351:1," +
++            "352:1,353:1,354:1,355:1,356:1,357:1,358:1,361:16,363:16,364:1,365:1,366:1,367:1,368:1,369:1,370:1," +
++            "371:1,372:1,373:1,374:1,377:16,378:1,379:1,380:1,381:1,382:1,383:1,392:1,393:16,395:1,421:1,424:1," +
++            "425:16,430:1,521:1,522:16,527:1,531:1,535:1,536:1,540:1,541:1,542:1,543:1,544:1,545:1,546:1,547:1," +
++            "548:1,549:1,550:1,551:1,552:1,553:1,554:1,555:1,556:1,571:1,572:1,573:1,574:1,577:16,578:1,583:1," +
++            "585:1,586:16,587:16,588:16,589:16,590:16,591:1,592:1,593:1,594:1,595:1,596:1,597:1,598:1,599:1,600:1," +
++            "602:1,604:16,606:16,607:1,608:1,611:16,615:1,616:1,617:1,619:1,620:1,621:1,622:1,623:1,625:1,626:1," +
++            "627:1,628:1,630:16,631:16,634:1,635:1,640:1,641:1,642:1,645:1,649:16,650:1,651:1,653:1,654:1,655:1," +
++            "656:1,657:1,658:1,659:1,664:1,665:1,666:16,667:16,668:1,669:1,695:1,715:1,723:1,724:1,725:1,726:16," +
++            "729:16,730:16,732:1,733:1,734:1,735:1,736:1,737:1,738:1,739:1,740:1,741:1,742:1,743:1,744:1,745:1," +
++            "746:1,747:1,749:1,750:1,751:1,752:1,753:1,754:1,755:1,756:1,757:1,759:1,763:1,764:1,765:1,766:1," +
++            "767:1,768:1,770:1,771:1,772:1,773:16,774:16,775:16,776:16,777:16,778:16,779:16,780:16,781:16,782:16," +
++            "783:16,784:16,785:16,786:16,787:16,788:16,789:16,790:16,832:1,833:1,834:1,835:1,836:1,837:1,854:1," +
++            "855:1,856:1,857:1,858:1,859:1,860:1,861:1,862:1,863:1,864:1,865:1,866:1,867:1,868:1,869:1,870:1," +
++            "871:1,872:1,873:1,874:1,875:1,876:1,877:1";
++
++    private static final java.util.Map<Integer, Integer> BEDROCK_STACK_LIMITS = buildStackLimits();
++
++    private static java.util.Map<Integer, Integer> buildStackLimits() {
++        final java.util.Map<Integer, Integer> limits = new java.util.HashMap<>();
++        for (final String entry : BEDROCK_STACK_LIMITS_DATA.split(",")) {
++            final int sep = entry.indexOf(':');
++            if (sep > 0) {
++                limits.put(Integer.valueOf(entry.substring(0, sep)), Integer.valueOf(entry.substring(sep + 1)));
++            }
++        }
++        return java.util.Collections.unmodifiableMap(limits);
++    }
++
++    private static int creativeTakeSourceStackId(final int requestId) {
++        final String mode = System.getProperty("mpmc.reqid.src", "request");
++        if (mode.equals("zero")) {
++            return 0;
++        }
++        if (mode.equals("neg")) {
++            return -requestId;
++        }
++        return requestId;
++    }
++
++
++    private static void applyItemStackResponseSlot(final InventoryTracker inventoryTracker, final InventoryTracker.PendingCreativeSlot pending, final ContainerEnumName containerName, final int slot, final int count, final int stackId) {
++        final Container container = creativeContainer(inventoryTracker, containerName);
++        // BDS reports the offhand item at OffhandContainer slot 1 on the wire, but
++        // ViaBedrock's tracker keeps it in the single slot 0. Normalize before
++        // applying the server-assigned stack network id, otherwise the next
++        // click on this slot references a stale source (status 49).
++        final int targetSlot = containerName == ContainerEnumName.OffhandContainer && slot == 1 ? 0 : slot;
++        if (targetSlot < 0 || targetSlot >= container.size()) {
++            return;
++        }
++        if (count <= 0) {
++            container.setItem(targetSlot, BedrockItem.empty());
++            return;
++        }
++
++        BedrockItem item = container.getItem(targetSlot);
++        if (item.isEmpty() && pending != null) {
++            item = pending.newItem();
++        }
++        if (item.isEmpty()) {
++            return;
++        }
++        final BedrockItem updated = item.copy();
++        updated.setAmount(count);
++        updated.setNetId(stackId);
++        container.setItem(targetSlot, updated);
++    }
++
++    private static void restoreCreativeSlot(final UserConnection user, final InventoryTracker inventoryTracker, final InventoryTracker.PendingCreativeSlot pending) {
++        final Container container = creativeContainer(inventoryTracker, pending.container());
++        if (pending.slot() >= 0 && pending.slot() < container.size()) {
++            container.setItem(pending.slot(), pending.oldItem());
++        }
++        PacketFactory.sendJavaContainerSetContent(user, inventoryTracker.getInventoryContainer());
++    }
++
+     private static void addTextToDialog(final UserConnection userConnection, final Dialog dialog, final String text) {
+         if (dialog.getInputs().isEmpty()) {
+             for (String line : BedrockTextUtils.split(text, "\n")) {
+diff --git a/src/main/java/net/raphimc/viabedrock/protocol/packet/JoinPackets.java b/src/main/java/net/raphimc/viabedrock/protocol/packet/JoinPackets.java
+index 6e99cde..bb43567 100644
+--- a/src/main/java/net/raphimc/viabedrock/protocol/packet/JoinPackets.java
++++ b/src/main/java/net/raphimc/viabedrock/protocol/packet/JoinPackets.java
+@@ -483,7 +483,7 @@ public final class JoinPackets {
+         );
+     }
+ 
+-    private static void sendClientCacheStatus(final UserConnection user) {
++    public static void sendClientCacheStatus(final UserConnection user) {
+         final PacketWrapper clientCacheStatus = PacketWrapper.create(ServerboundBedrockPackets.CLIENT_CACHE_STATUS, user);
+         clientCacheStatus.write(Types.BOOLEAN, !ViaBedrock.getConfig().getBlobCacheMode().equals(ViaBedrockConfig.BlobCacheMode.DISABLED)); // is supported
+         clientCacheStatus.sendToServer(BedrockProtocol.class);
+@@ -631,6 +631,8 @@ public final class JoinPackets {
+         final PacketWrapper setTime = PacketWrapper.create(ClientboundBedrockPackets.SET_TIME, user);
+         setTime.write(BedrockTypes.VAR_INT, joinGameStorage.currentTime()); // time of day
+         setTime.send(BedrockProtocol.class, false);
++
++        user.get(DeferredClientboundPackets.class).flush();
+     }
+ 
+     private JoinPackets() {
+diff --git a/src/main/java/net/raphimc/viabedrock/protocol/packet/LocatorBarPackets.java b/src/main/java/net/raphimc/viabedrock/protocol/packet/LocatorBarPackets.java
+new file mode 100644
+index 0000000..dbfc3b6
+--- /dev/null
++++ b/src/main/java/net/raphimc/viabedrock/protocol/packet/LocatorBarPackets.java
+@@ -0,0 +1,118 @@
++/*
++ * This file is part of ViaBedrock - https://github.com/RaphiMC/ViaBedrock
++ * Copyright (C) 2023-2026 RK_01/RaphiMC and contributors
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++package net.raphimc.viabedrock.protocol.packet;
++
++import com.viaversion.viaversion.api.protocol.packet.PacketWrapper;
++import com.viaversion.viaversion.api.protocol.version.ProtocolVersion;
++import com.viaversion.viaversion.api.type.Types;
++import com.viaversion.viaversion.protocols.v26_2to26_3.packet.ClientboundPackets26_3;
++import net.raphimc.viabedrock.protocol.BedrockProtocol;
++import net.raphimc.viabedrock.protocol.ClientboundBedrockPackets;
++import net.raphimc.viabedrock.protocol.model.Position3f;
++import net.raphimc.viabedrock.protocol.types.BedrockTypes;
++
++import java.util.UUID;
++
++public final class LocatorBarPackets {
++
++    public static void register(final BedrockProtocol protocol) {
++        protocol.registerClientbound(ClientboundBedrockPackets.LOCATOR_BAR, null, wrapper -> {
++            // Locator bar waypoints were introduced in Bedrock 1.21.90 (protocol 800) and are sent as
++            // full waypoint snapshots. Java has an equivalent packet since 1.21.6 (tracked waypoint).
++            final int waypointCount = wrapper.read(BedrockTypes.UNSIGNED_VAR_INT);
++            final boolean javaSupportsWaypoints = wrapper.user().getProtocolInfo().protocolVersion().newerThanOrEqualTo(ProtocolVersion.v1_21_6);
++
++            for (int i = 0; i < waypointCount; i++) {
++                final UUID groupHandle = wrapper.read(BedrockTypes.UUID);
++                wrapper.read(BedrockTypes.UNSIGNED_INT_LE); // update flags
++                if (wrapper.read(Types.BOOLEAN)) { // has visible
++                    wrapper.read(Types.BOOLEAN); // visible
++                }
++                Position3f position = null;
++                if (wrapper.read(Types.BOOLEAN)) { // has world position
++                    position = wrapper.read(BedrockTypes.POSITION_3F); // position
++                    wrapper.read(BedrockTypes.VAR_INT); // dimension id
++                }
++                String texturePath = null;
++                if (wrapper.read(Types.BOOLEAN)) { // has texture path
++                    texturePath = wrapper.read(BedrockTypes.STRING); // texture path
++                }
++                if (wrapper.read(Types.BOOLEAN)) { // has icon size
++                    wrapper.read(BedrockTypes.POSITION_2F); // icon size
++                }
++                int color = 0;
++                boolean hasColor = wrapper.read(Types.BOOLEAN); // has color
++                if (hasColor) {
++                    color = wrapper.read(BedrockTypes.INT_LE); // color (ARGB, big-endian since 1.26.40)
++                }
++                if (wrapper.read(Types.BOOLEAN)) { // has client position authority
++                    wrapper.read(Types.BOOLEAN); // client position authority
++                }
++                if (wrapper.read(Types.BOOLEAN)) { // has actor unique id
++                    wrapper.read(BedrockTypes.VAR_LONG); // actor unique id
++                }
++                final int action = wrapper.read(Types.UNSIGNED_BYTE); // action
++
++                if (!javaSupportsWaypoints) {
++                    continue;
++                }
++                final int operation = switch (action) {
++                    case 1 -> 0; // add -> track
++                    case 2 -> 1; // remove -> untrack
++                    case 3 -> 2; // update -> update
++                    default -> -1; // none
++                };
++                if (operation == -1) {
++                    continue;
++                }
++
++                final PacketWrapper trackedWaypoint = PacketWrapper.create(ClientboundPackets26_3.TRACKED_WAYPOINT, wrapper.user());
++                trackedWaypoint.write(Types.VAR_INT, operation); // operation
++                trackedWaypoint.write(Types.BOOLEAN, true); // has uuid
++                trackedWaypoint.write(Types.UUID, groupHandle); // uuid
++                trackedWaypoint.write(Types.STRING, waypointStyle(texturePath)); // icon style
++                if (hasColor) {
++                    trackedWaypoint.write(Types.BOOLEAN, true); // has color
++                    trackedWaypoint.write(Types.UNSIGNED_BYTE, (short) ((color >> 16) & 0xFF)); // red
++                    trackedWaypoint.write(Types.UNSIGNED_BYTE, (short) ((color >> 8) & 0xFF)); // green
++                    trackedWaypoint.write(Types.UNSIGNED_BYTE, (short) (color & 0xFF)); // blue
++                } else {
++                    trackedWaypoint.write(Types.BOOLEAN, false); // no color
++                }
++                if (operation == 1 || position == null) {
++                    trackedWaypoint.write(Types.VAR_INT, 0); // type: empty
++                } else {
++                    trackedWaypoint.write(Types.VAR_INT, 1); // type: vec3i
++                    trackedWaypoint.write(Types.VAR_INT, (int) Math.floor(position.x())); // x
++                    trackedWaypoint.write(Types.VAR_INT, (int) Math.floor(position.y())); // y
++                    trackedWaypoint.write(Types.VAR_INT, (int) Math.floor(position.z())); // z
++                }
++                trackedWaypoint.send(BedrockProtocol.class);
++            }
++        });
++    }
++
++    private static String waypointStyle(final String texturePath) {
++        // Vanilla Java only ships "minecraft:default"; custom textures have no Java equivalent.
++        return "minecraft:default";
++    }
++
++    private LocatorBarPackets() {
++    }
++
++}
+diff --git a/src/main/java/net/raphimc/viabedrock/protocol/packet/WorldPackets.java b/src/main/java/net/raphimc/viabedrock/protocol/packet/WorldPackets.java
+index d91e9cf..e19fc78 100644
+--- a/src/main/java/net/raphimc/viabedrock/protocol/packet/WorldPackets.java
++++ b/src/main/java/net/raphimc/viabedrock/protocol/packet/WorldPackets.java
+@@ -165,8 +165,8 @@ public final class WorldPackets {
+             wrapper.write(Types.VAR_INT, dimension.ordinal()); // dimension id
+             wrapper.write(Types.STRING, dimension.getKey()); // dimension name
+             wrapper.write(Types.LONG, 0L); // hashed seed
+-            wrapper.write(Types.BYTE, (byte) clientPlayer.javaGameMode().ordinal()); // game mode
+-            wrapper.write(Types.BYTE, (byte) -1); // previous game mode
++            wrapper.write(Types.VAR_INT, clientPlayer.javaGameMode().ordinal()); // game mode
++            wrapper.write(Types.OPTIONAL_VAR_INT, null); // previous game mode
+             wrapper.write(Types.BOOLEAN, false); // is debug
+             wrapper.write(Types.BOOLEAN, gameSession.isFlatGenerator()); // is flat
+             wrapper.write(Types.OPTIONAL_GLOBAL_POSITION, null); // last death position
+diff --git a/src/main/java/net/raphimc/viabedrock/protocol/rewriter/ItemRewriter.java b/src/main/java/net/raphimc/viabedrock/protocol/rewriter/ItemRewriter.java
+index bba68b8..9f04525 100644
+--- a/src/main/java/net/raphimc/viabedrock/protocol/rewriter/ItemRewriter.java
++++ b/src/main/java/net/raphimc/viabedrock/protocol/rewriter/ItemRewriter.java
+@@ -66,6 +66,16 @@ public class ItemRewriter extends StoredObject {
+ 
+     private static final Map<String, NbtRewriter> ITEM_NBT_REWRITERS = new HashMap<>();
+ 
++    // Bedrock 1.26.51 has no standalone minecraft:spectral_arrow runtime item:
++    // all arrow variants are minecraft:arrow with metadata, and CREATIVE_CONTENT
++    // only lists the metadata variants BDS itself accepts. Without this alias a Java
++    // creative click on spectral_arrow produced "Missing Java -> Bedrock item mapping"
++    // and the slot update was dropped entirely ("cannot take items"). The alias is a
++    // deliberate semantic downgrade, verified on live BDS (offhand + inventory accept
++    // minecraft:arrow); it is logged as [CLASSIFIED] rather than hidden.
++    private static final Map<String, String> JAVA_TO_BEDROCK_ITEM_ALIASES = Map.of(
++            "minecraft:spectral_arrow", "minecraft:arrow");
++
+     private final BiMap<String, Integer> items;
+     private final Set<String> componentItems;
+     private final Int2ObjectMap<IntSortedSet> blockItemValidBlockStates;
+@@ -279,8 +289,86 @@ public class ItemRewriter extends StoredObject {
+         return javaItems;
+     }
+ 
++    public String bedrockIdentifier(final int bedrockItemId) {
++        return this.items.inverse().get(bedrockItemId);
++    }
++
+     public BedrockItem bedrockItem(final Item javaItem) {
+-        throw new UnsupportedOperationException("Translating Java items to Bedrock is not yet supported");
++        if (javaItem == null || javaItem.isEmpty()) {
++            return BedrockItem.empty();
++        }
++
++        final String javaIdentifier = BedrockProtocol.MAPPINGS.getJavaItems().inverse().get(javaItem.identifier());
++        if (javaIdentifier == null) {
++            ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "Missing Java item identifier for id: " + javaItem.identifier());
++            return BedrockItem.empty();
++        }
++
++        String bedrockIdentifier = this.items.containsKey(javaIdentifier) ? javaIdentifier : null;
++        int data = javaItem.data() & 0xFFFF;
++        if (bedrockIdentifier == null) {
++            for (Map.Entry<String, Map<BlockState, BedrockMappingData.JavaItemMapping>> entry : BedrockProtocol.MAPPINGS.getBedrockToJavaBlockItems().entrySet()) {
++                for (BedrockMappingData.JavaItemMapping mapping : entry.getValue().values()) {
++                    if (mapping.id() == javaItem.identifier()) {
++                        bedrockIdentifier = entry.getKey();
++                        data = 0;
++                        break;
++                    }
++                }
++                if (bedrockIdentifier != null) {
++                    break;
++                }
++            }
++        }
++        if (bedrockIdentifier == null) {
++            for (Map.Entry<String, Map<Integer, BedrockMappingData.JavaItemMapping>> entry : BedrockProtocol.MAPPINGS.getBedrockToJavaMetaItems().entrySet()) {
++                for (Map.Entry<Integer, BedrockMappingData.JavaItemMapping> mappingEntry : entry.getValue().entrySet()) {
++                    if (mappingEntry.getValue().id() == javaItem.identifier()) {
++                        bedrockIdentifier = entry.getKey();
++                        data = mappingEntry.getKey() != null ? mappingEntry.getKey() : 0;
++                        break;
++                    }
++                }
++                if (bedrockIdentifier != null) {
++                    break;
++                }
++            }
++        }
++        if (bedrockIdentifier == null) {
++            final String alias = JAVA_TO_BEDROCK_ITEM_ALIASES.get(javaIdentifier);
++            if (alias != null && this.items.containsKey(alias)) {
++                bedrockIdentifier = alias;
++                data = 0; // plain Bedrock arrow; the Java-only variant effect is intentionally dropped
++                ViaBedrock.getPlatform().getLogger().log(Level.INFO, "[CLASSIFIED] Java item "
++                        + javaIdentifier + " aliased to Bedrock " + alias);
++            }
++        }
++        if (bedrockIdentifier == null) {
++            ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "Missing Java -> Bedrock item mapping for " + javaIdentifier);
++            return BedrockItem.empty();
++        }
++
++        final Integer bedrockId = this.items.get(bedrockIdentifier);
++        if (bedrockId == null) {
++            ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "Missing Bedrock item id for " + bedrockIdentifier);
++            return BedrockItem.empty();
++        }
++
++        final BedrockItem bedrockItem = new BedrockItem(bedrockId);
++        bedrockItem.setAmount(javaItem.amount());
++        final IntSortedSet validBlockStates = this.blockItemValidBlockStates.get(bedrockId.intValue());
++        if (validBlockStates != null) {
++            bedrockItem.setData(0);
++            if (!validBlockStates.isEmpty()) {
++                bedrockItem.setBlockRuntimeId(validBlockStates.firstInt());
++            }
++        } else {
++            bedrockItem.setData(data);
++        }
++        if (javaItem.tag() != null) {
++            bedrockItem.setTag(javaItem.tag().copy());
++        }
++        return bedrockItem;
+     }
+ 
+     public BedrockItem[] bedrockItems(final Item[] javaItems) {
+diff --git a/src/main/java/net/raphimc/viabedrock/protocol/storage/CommandsStorage.java b/src/main/java/net/raphimc/viabedrock/protocol/storage/CommandsStorage.java
+index da5dfda..c63949c 100644
+--- a/src/main/java/net/raphimc/viabedrock/protocol/storage/CommandsStorage.java
++++ b/src/main/java/net/raphimc/viabedrock/protocol/storage/CommandsStorage.java
+@@ -296,6 +296,13 @@ public class CommandsStorage extends StoredObject {
+                                 last = null;
+                                 continue;
+                             }
++                            case CodeBuilderArgs -> {
++                                // Bedrock 1.26.51 CodeBuilder command argument (0x10005A). Java has no
++                                // equivalent argument type, so keep the exact same greedy-string
++                                // fallback as the default branch: the declared command tree must stay
++                                // byte-identical. A dedicated case avoids a WARNING on every join.
++                                argument = argument(parameter.name() + ": unknown", StringArgumentType.greedyString());
++                            }
+                             default -> {
+                                 ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "Unhandled command parameter type: " + parameter.type());
+                                 argument = argument(parameter.name() + ": unknown", StringArgumentType.greedyString()); // Bedrock client crashes if the type isn't valid
+diff --git a/src/main/java/net/raphimc/viabedrock/protocol/storage/DeferredClientboundPackets.java b/src/main/java/net/raphimc/viabedrock/protocol/storage/DeferredClientboundPackets.java
+new file mode 100644
+index 0000000..93c41db
+--- /dev/null
++++ b/src/main/java/net/raphimc/viabedrock/protocol/storage/DeferredClientboundPackets.java
+@@ -0,0 +1,94 @@
++/*
++ * This file is part of ViaBedrock - https://github.com/RaphiMC/ViaBedrock
++ * Copyright (C) 2023-2026 RK_01/RaphiMC and contributors
++ *
++ * This program is free software: you can redistribute it and/or modify
++ * it under the terms of the GNU General Public License as published by
++ * the Free Software Foundation, either version 3 of the License, or
++ * (at your option) any later version.
++ *
++ * This program is distributed in the hope that it will be useful,
++ * but WITHOUT ANY WARRANTY; without even the implied warranty of
++ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
++ * GNU General Public License for more details.
++ *
++ * You should have received a copy of the GNU General Public License
++ * along with this program.  If not, see <http://www.gnu.org/licenses/>.
++ */
++package net.raphimc.viabedrock.protocol.storage;
++
++import com.viaversion.viaversion.api.connection.StoredObject;
++import com.viaversion.viaversion.api.connection.UserConnection;
++import com.viaversion.viaversion.api.protocol.packet.PacketWrapper;
++import io.netty.buffer.Unpooled;
++import net.raphimc.viabedrock.ViaBedrock;
++import net.raphimc.viabedrock.protocol.BedrockProtocol;
++
++import java.util.ArrayList;
++import java.util.List;
++import java.util.logging.Level;
++
++/**
++ * Holds Bedrock packets which arrived before the Java client reached the PLAY state, so they can be replayed once it did.
++ * <p>
++ * The Bedrock server starts streaming world data right after START_GAME, while the Java client still finishes its
++ * configuration phase. Dropping those packets (the previous behaviour) results in missing player list entries, world
++ * events, clock syncs and similar state that is never re-sent.
++ */
++public class DeferredClientboundPackets extends StoredObject {
++
++    private static final int MAX_PACKETS = 32_768;
++    private static final long MAX_BYTES = 64L * 1024L * 1024L;
++
++    private final List<DeferredPacket> packets = new ArrayList<>();
++    private long queuedBytes;
++    private boolean overflowReported;
++
++    public DeferredClientboundPackets(final UserConnection user) {
++        super(user);
++    }
++
++    public void enqueue(final int packetId, final byte[] data) {
++        if (this.packets.size() >= MAX_PACKETS || this.queuedBytes + data.length > MAX_BYTES) {
++            if (!this.overflowReported) {
++                this.overflowReported = true;
++                ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "Deferred packet queue is full, dropping packet " + packetId + " and any further pre-PLAY packets");
++            }
++            return;
++        }
++        this.packets.add(new DeferredPacket(packetId, data));
++        this.queuedBytes += data.length;
++    }
++
++    public boolean isEmpty() {
++        return this.packets.isEmpty();
++    }
++
++    public void flush() {
++        if (this.packets.isEmpty()) {
++            return;
++        }
++        final List<DeferredPacket> queued = new ArrayList<>(this.packets);
++        this.packets.clear();
++        this.queuedBytes = 0L;
++        if (ViaBedrock.getPlatform().getLogger().isLoggable(Level.FINE)) {
++            ViaBedrock.getPlatform().getLogger().log(Level.FINE, "Replaying " + queued.size() + " packet(s) received before PLAY state");
++        }
++        for (final DeferredPacket packet : queued) {
++            try {
++                final PacketWrapper wrapper = PacketWrapper.create(packet.id(), Unpooled.wrappedBuffer(packet.data()), this.user());
++                // The payload is still a *Bedrock* packet, so BedrockProtocol must transform it.
++                // send(protocol) defaults to skipCurrentPipeline=true, which would hand the raw
++                // Bedrock id straight to the Java protocols (e.g. id 124 LEVEL_EVENT_GENERIC is
++                // read as SYSTEM_CHAT 0x7C) and produce a malformed packet.
++                wrapper.send(BedrockProtocol.class, false);
++            } catch (final Throwable e) {
++                ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "Failed to replay deferred packet " + packet.id(), e);
++            }
++        }
++    }
++
++    private record DeferredPacket(int id, byte[] data) {
++    }
++
++}
+diff --git a/src/main/java/net/raphimc/viabedrock/protocol/storage/EntityTracker.java b/src/main/java/net/raphimc/viabedrock/protocol/storage/EntityTracker.java
+index 85d216c..10f0128 100644
+--- a/src/main/java/net/raphimc/viabedrock/protocol/storage/EntityTracker.java
++++ b/src/main/java/net/raphimc/viabedrock/protocol/storage/EntityTracker.java
+@@ -184,7 +184,15 @@ public class EntityTracker extends StoredObject {
+     }
+ 
+     public Entity getEntityByJid(final int javaId) {
+-        return this.entities.get((long) this.javaIdToUniqueId.get(javaId));
++        // A client may click an entity id we never spawned (stale/laggy entity list,
++        // or an id belonging only to the Java client). All callers already handle a
++        // null entity by cancelling the wrapper; unboxing a missing Long here used to
++        // throw NPE and kick the whole session (measured on BDS 1.26.51 / Java 1.21.1).
++        final Long uniqueId = this.javaIdToUniqueId.get(javaId);
++        if (uniqueId == null) {
++            return null;
++        }
++        return this.entities.get(uniqueId.longValue());
+     }
+ 
+     public ClientPlayerEntity getClientPlayer() {
+diff --git a/src/main/java/net/raphimc/viabedrock/protocol/storage/InventoryTracker.java b/src/main/java/net/raphimc/viabedrock/protocol/storage/InventoryTracker.java
+index 5f13d76..723a83d 100644
+--- a/src/main/java/net/raphimc/viabedrock/protocol/storage/InventoryTracker.java
++++ b/src/main/java/net/raphimc/viabedrock/protocol/storage/InventoryTracker.java
+@@ -21,6 +21,8 @@ import com.viaversion.viaversion.api.connection.StoredObject;
+ import com.viaversion.viaversion.api.connection.UserConnection;
+ import com.viaversion.viaversion.api.protocol.packet.PacketWrapper;
+ import com.viaversion.viaversion.api.type.Types;
++import com.viaversion.viaversion.libs.fastutil.ints.Int2ObjectMap;
++import com.viaversion.viaversion.libs.fastutil.ints.Int2ObjectOpenHashMap;
+ import com.viaversion.viaversion.libs.fastutil.ints.IntObjectPair;
+ import net.lenni0451.mcstructs_bedrock.forms.Form;
+ import net.raphimc.viabedrock.ViaBedrock;
+@@ -56,10 +58,21 @@ public class InventoryTracker extends StoredObject {
+     private final ArmorContainer armorContainer = new ArmorContainer(this.user());
+     private final HudContainer hudContainer = new HudContainer(this.user());
+     private final Map<FullContainerName, BundleContainer> dynamicContainerRegistry = new HashMap<>();
++    private final Int2ObjectMap<BedrockItem> creativeItems = new Int2ObjectOpenHashMap<>();
++    private final Int2ObjectMap<PendingCreativeSlot> pendingCreativeSlots = new Int2ObjectOpenHashMap<>();
++    // A real Java 1.21.1 creative client emits TWO SET_CREATIVE_MODE_SLOT packets per click.
++    // Sending both ITEM_STACK_REQUESTs immediately makes the second one reference a source
++    // stack the server has not assigned a network id yet (BDS status 49). Queue per (container, slot)
++    // and only flush the next request after the previous ITEM_STACK_RESPONSE has updated the tracker.
++    private final Map<Long, java.util.ArrayDeque<DeferredCreativeSlot>> deferredCreativeSlots = new HashMap<>();
++    private final Map<Long, Long> inFlightCreativeSlots = new HashMap<>(); // slotKey -> start time (ms)
+ 
+     private Container currentContainer = null;
+     private Container pendingCloseContainer = null;
+     private IntObjectPair<Form> currentForm = null;
++    private final java.util.ArrayDeque<net.raphimc.viabedrock.protocol.model.inventory.BedrockInventoryTransaction> pendingAuthInputTransactions = new java.util.ArrayDeque<>();
++    private long nextItemStackRequestId = Integer.getInteger("mpmc.reqid.start", -1);
++    private final int itemStackRequestIdStep = Integer.getInteger("mpmc.reqid.step", -2);
+ 
+     public InventoryTracker(final UserConnection user) {
+         super(user);
+@@ -211,6 +224,45 @@ public class InventoryTracker extends StoredObject {
+         this.currentForm = currentForm;
+     }
+ 
++    public Int2ObjectMap<BedrockItem> getCreativeItems() {
++        return this.creativeItems;
++    }
++
++    public Int2ObjectMap<PendingCreativeSlot> getPendingCreativeSlots() {
++        return this.pendingCreativeSlots;
++    }
++
++    public Map<Long, java.util.ArrayDeque<DeferredCreativeSlot>> getDeferredCreativeSlots() {
++        return this.deferredCreativeSlots;
++    }
++
++    public Map<Long, Long> getInFlightCreativeSlots() {
++        return this.inFlightCreativeSlots;
++    }
++
++    public net.raphimc.viabedrock.protocol.model.inventory.BedrockInventoryTransaction pollPendingAuthInputTransaction() {
++        return this.pendingAuthInputTransactions.poll();
++    }
++
++    public void addPendingAuthInputTransaction(final net.raphimc.viabedrock.protocol.model.inventory.BedrockInventoryTransaction transaction) {
++        this.pendingAuthInputTransactions.add(transaction);
++    }
++
++    public int nextItemStackRequestId() {
++        final int requestId = (int) this.nextItemStackRequestId;
++        this.nextItemStackRequestId += this.itemStackRequestIdStep;
++        if (this.nextItemStackRequestId > Integer.MAX_VALUE || this.nextItemStackRequestId < Integer.MIN_VALUE) {
++            this.nextItemStackRequestId = Integer.getInteger("mpmc.reqid.start", -1);
++        }
++        return requestId;
++    }
++
++    public record PendingCreativeSlot(ContainerEnumName container, int slot, BedrockItem oldItem, BedrockItem newItem) {
++    }
++
++    public record DeferredCreativeSlot(int javaSlot, com.viaversion.viaversion.api.minecraft.item.Item javaItem) {
++    }
++
+     private void forceCloseCurrentContainer() {
+         this.markPendingClose(this.currentContainer);
+         PacketFactory.sendJavaContainerClose(this.user(), this.pendingCloseContainer.javaContainerId());
+diff --git a/src/main/java/net/raphimc/viabedrock/protocol/types/item/BedrockItemType.java b/src/main/java/net/raphimc/viabedrock/protocol/types/item/BedrockItemType.java
+index 5bad427..2f0819e 100644
+--- a/src/main/java/net/raphimc/viabedrock/protocol/types/item/BedrockItemType.java
++++ b/src/main/java/net/raphimc/viabedrock/protocol/types/item/BedrockItemType.java
+@@ -42,16 +42,10 @@ public class BedrockItemType extends Type<BedrockItem> {
+     @Override
+     public BedrockItem read(final ByteBuf buffer) {
+         final int id = BedrockTypes.VAR_INT.read(buffer);
+-        if (id == 0 || id == -1) {
+-            return BedrockItem.empty();
+-        }
+-
+         final BedrockItem item = new BedrockItem(id);
++        // As of Bedrock 1.26.40 air items no longer short-circuit: every field is written
+         item.setAmount(buffer.readUnsignedShortLE());
+         item.setData(BedrockTypes.UNSIGNED_VAR_INT.read(buffer));
+-        /*if (buffer.readBoolean()) {
+-         *     item.setNetId(BedrockTypes.VAR_INT.read(buffer));
+-         * }*/
+         item.setBlockRuntimeId(BedrockTypes.VAR_INT.read(buffer));
+ 
+         final IntSortedSet validBlockStates = this.blockItemValidBlockStates.get(item.identifier());
+@@ -64,7 +58,11 @@ public class BedrockItemType extends Type<BedrockItem> {
+             item.setBlockRuntimeId(0);
+         }
+ 
+-        final ByteBuf userData = buffer.readSlice(BedrockTypes.UNSIGNED_VAR_INT.read(buffer));
++        final int userDataLength = BedrockTypes.UNSIGNED_VAR_INT.read(buffer);
++        final ByteBuf userData = buffer.readSlice(userDataLength);
++        if (!userData.isReadable(2)) {
++            return item;
++        }
+         try {
+             final short marker = userData.readShortLE();
+             if (marker == 0) {

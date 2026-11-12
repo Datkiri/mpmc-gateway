@@ -1,0 +1,6 @@
+A bound
+B bound
+C bound {"address":"0.0.0.0","family":"IPv4","port":17140}
+C send err=none
+A(first) received
+done
