@@ -1,0 +1,13 @@
+// Protocol-compatibility probe for the Bedrock -> Java chain.
+// Same chain as java-join.jsonl but the client speaks Bedrock 1.26.50 (2193)
+// instead of 1.26.60 (2225). Used to record which Bedrock protocol versions
+// Geyser 2.12.1-b1302 accepts. Run with -live-item-registry.
+{"cmd":"join","addr":"127.0.0.1:19132","proto":2193,"direct":true}
+{"cmd":"wait","ms":3000}
+{"cmd":"assert","metric":"spawned","op":"==","value":true}
+{"cmd":"assert","metric":"packet_LevelChunk","op":">","value":0}
+{"cmd":"chat","message":"hello from bedrock 1.26.50"}
+{"cmd":"wait","ms":2000}
+{"cmd":"assert","metric":"decode_errors","op":"==","value":0}
+{"cmd":"dump"}
+{"cmd":"quit"}

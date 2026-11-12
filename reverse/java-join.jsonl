@@ -1,0 +1,36 @@
+// Bedrock -> Java (offline, no Xbox) smoke test.
+// Verified 2026-11-12 on BDS-free local chain:
+//   clientclone (self-signed identity, no Xbox, RakNet, proto 2225)
+//     -> Geyser 2.12.1-b1302 (transport=both: RakNet UDP 19132 + NetherNet UDP 19134,
+//        auth-type=offline, advanced.bedrock.validate-bedrock-login=false)
+//     -> ViaProxy 3.4.14 (26.3 <-> 1.21.11) on 127.0.0.1:25566
+//     -> Java 1.21.11 server (online-mode=false) on 127.0.0.1:25565
+// Geyser declares 8 extra custom items, so -live-item-registry is required:
+// item IDs resolve against the server's GameData and item_registry only
+// requires the pinned 2225 table to be a subset.
+//
+// Start order: Java server -> ViaProxy bridge -> Geyser, then:
+//   clientclone -script cmd/clientclone/scripts/java-join.jsonl \
+//     -addr 127.0.0.1:19132 -direct -proto 2225 -live-item-registry \
+//     -duration 30s -v -json dist/clientclone-java-join.json
+{"cmd":"join","addr":"127.0.0.1:19132","proto":2225,"direct":true}
+{"cmd":"wait","ms":3000}
+{"cmd":"assert","metric":"spawned","op":"==","value":true}
+{"cmd":"assert","metric":"packet_LevelChunk","op":">","value":0}
+{"cmd":"chat","message":"hello from offline bedrock client"}
+{"cmd":"look","yaw":0.5,"pitch":0.1}
+{"cmd":"move","x":-3.5,"y":-58.38,"z":3.5}
+{"cmd":"jump"}
+{"cmd":"sneak","on":true}
+{"cmd":"sprint","on":true}
+{"cmd":"wait","ms":1500}
+{"cmd":"sneak","on":false}
+{"cmd":"sprint","on":false}
+{"cmd":"hotbar","slot":3}
+{"cmd":"wait","ms":1500}
+{"cmd":"assert","metric":"auth_input","op":">","value":0}
+{"cmd":"assert","metric":"decode_errors","op":"==","value":0}
+{"cmd":"assert","metric":"send_errors","op":"==","value":0}
+{"cmd":"assert","metric":"unknown_packets","op":"==","value":0}
+{"cmd":"dump"}
+{"cmd":"quit"}

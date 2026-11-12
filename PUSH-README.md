@@ -1,7 +1,18 @@
 # mpmc-gateway — snapshot công việc 2026-11-12
 
-Repo **private**, tạo mới để lưu toàn bộ trạng thái công việc Java → Bedrock gateway
+Repo **private**, tạo mới để lưu toàn bộ trạng thái công việc gateway hai chiều
 sau khi repo công khai cũ `Datkiri/bedrock-cross-version-relay` không còn tồn tại trên GitHub.
+
+## HAI TÍNH NĂNG (tóm tắt để gửi kèm)
+
+| # | Chiều | Chuỗi | Trạng thái đo được |
+|---|---|---|---|
+| 1 | **Java → Bedrock** | client Java 1.21.1 GUI / mineflayer → `ViaProxy + ViaBedrock mpmc.18` (`127.0.0.1:25569/25570`) → BDS 1.26.51 (proto 2193, RakNet UDP 19132) | Dịch packet có kiểm kê: 169 clientbound / 69 serverbound đều có disposition; audit `.18` 44.164 dòng, PRE = POST+CANCEL+DEFERRED, 0 ERROR/unmapped/NPE/kick, creative 50 accept / 0 reject, `INTERACT toHost=11`, `USE_ITEM_ON seq=1..80`; `gateway verify` VERIFY_EXIT=0. Source agent M0–M6 + `gateway-patches/`. |
+| 2 | **Bedrock → Java** (không Xbox) | client Bedrock LAN self-signed → `xvrelay -listen-nethernet` (broadcast `.255`) → Geyser 2.12.1 → ViaProxy → Java 1.21.11 | Join + chat thật: Java server `LANJoinerFinal joined the game` + `[Not Secure] <LANJoinerFinal> hello-from-LAN-offline`; wire capture 16+16 `ResponsePacket` tới `.255`, `ServerData` `AcceptsOnlineAuth=false` / `AcceptsSelfSignedAuth=true`; `clientclone` 12/12 assertion, 2168/2169/2193/2225 `ok=true`. Source/config: `reverse/`, `lan255/`, `docs/M6-BEDROCK.md §10`, branch `xver-relay`. |
+
+Cả hai chiều đều **đo bằng log/packet capture thật**, không chỉ compile success.
+Ranh giới `[Chưa xác minh]` nêu rõ ở cuối file này và trong `docs/M6-BEDROCK.md`.
+Repo gồm 2 nhánh: `main` = snapshot/docs/bằng chứng, `xver-relay` = lịch sử Go relay.
 
 ## Nội dung
 
@@ -13,6 +24,7 @@ sau khi repo công khai cũ `Datkiri/bedrock-cross-version-relay` không còn t�
 | `gateway-patches/viabedrock-src/` | Toàn bộ source Java đã patch của ViaBedrock mpmc.18 |
 | `gateway-patches/*.patch` | Diff so với base upstream, `git apply` được |
 | `lan255/` | Bằng chứng wire-level broadcast `.255` (`lan255-capture.txt`) + diff `xver-lan255.patch` (`e3bb416..59b350a`) |
+| `reverse/` | Config Geyser + 3 script `clientclone` + `run-reverse.txt` (lệnh tái dựng chiều Bedrock → Java) |
 
 Không đưa vào repo: fat jar, build output, BDS binary, `node_modules`, log runtime,
 `session.json`, `saves.json`, file token. Repo chỉ chứa source/text.
