@@ -1,7 +1,8 @@
 # mpmc-gateway — snapshot công việc 2026-11-12
 
-Repo **private**, tạo mới để lưu toàn bộ trạng thái công việc gateway hai chiều
-sau khi repo công khai cũ `Datkiri/bedrock-cross-version-relay` không còn tồn tại trên GitHub.
+Repo **public** (tạo private 12/11, chuyển public 13/11 theo yêu cầu để gửi kèm báo cáo),
+lưu toàn bộ trạng thái công việc gateway hai chiều sau khi repo công khai cũ
+`Datkiri/bedrock-cross-version-relay` không còn tồn tại trên GitHub.
 
 ## HAI TÍNH NĂNG (tóm tắt để gửi kèm)
 
