@@ -237,9 +237,6 @@ func New(source, target int32, hashed bool, custom []protocol.BlockEntry) (*Mapp
 	if src == nil || dst == nil {
 		return nil, fmt.Errorf("unsupported block registry%d ->%d", source, target)
 	}
-	if !hashed && len(custom) > 0 {
-		return nil, fmt.Errorf("custom block runtime-ID ordering cannot be inferred")
-	}
 	m := &Mapper{source: src, target: dst, hashed: hashed, ids: map[uint32]uint32{}, targetProto: target}
 	fallbackKey, _ := mapping.StateKey("minecraft:info_update", nil)
 	fallback, ok := dst.byKey[fallbackKey]
@@ -279,6 +276,22 @@ func New(source, target int32, hashed bool, custom []protocol.BlockEntry) (*Mapp
 		m.ids[in] = out
 	}
 	skippedCustom := 0
+	if !hashed && len(custom) > 0 {
+		// A Java->Bedrock bridge (Geyser) appends custom block states to
+		// StartGame while keeping runtime IDs unhashed. Their runtime-ID
+		// ordering cannot be inferred from the declarations: the old code
+		// aborted the WHOLE session here ("custom block runtime-ID ordering
+		// cannot be inferred"), right after a successful login + host dial.
+		//
+		// Vanilla states occupy the low runtime IDs and are still translated
+		// exactly by the loop above. Custom IDs are simply absent from m.ids,
+		// so Map() returns the visible info_update placeholder for them. The
+		// session survives; custom blocks are rendered as info_update until a
+		// proper runtime-ID table is available. This is a measured degradation,
+		// not a silent wrong mapping.
+		skippedCustom += len(custom)
+		custom = nil
+	}
 	for _, entry := range custom {
 		hash, err := StateHash(entry.Name, entry.Properties)
 		if err != nil {

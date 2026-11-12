@@ -1,0 +1,11 @@
+// Generic Bedrock -> Java protocol compatibility probe.
+// -proto and -name come from the CLI; join deliberately omits both so the
+// same script can sweep 1001 / 2168 / 2169 / 2193 / 2225.
+// Requires -live-item-registry and a distinct -name per run (Geyser keeps a
+// username logged in for a few seconds after disconnect).
+{"cmd":"join","addr":"127.0.0.1:19132","direct":true}
+{"cmd":"wait","ms":2500}
+{"cmd":"assert","metric":"spawned","op":"==","value":true}
+{"cmd":"assert","metric":"decode_errors","op":"==","value":0}
+{"cmd":"dump"}
+{"cmd":"quit"}

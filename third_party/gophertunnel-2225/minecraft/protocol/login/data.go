@@ -378,7 +378,14 @@ func (data ClientData) Validate() error {
 			return fmt.Errorf("ServerAddress is invalid: %v", data.ServerAddress)
 		}
 	} else if _, err := net.ResolveUDPAddr("udp", data.ServerAddress); err != nil {
-		return fmt.Errorf("ServerAddress must be resolveable as a UDP address, but got %v", data.ServerAddress)
+		// A NetherNet LAN world is addressed by its network ID: a bare decimal
+		// uint64, not a host:port. Bedrock clients joining a world from the
+		// Friends tab put that ID in ServerAddress. Rejecting it here used to
+		// close every LAN connection right after the Login packet, even though
+		// discovery, signaling, ICE, DTLS and SCTP had all succeeded.
+		if _, numErr := strconv.ParseUint(data.ServerAddress, 10, 64); numErr != nil {
+			return fmt.Errorf("ServerAddress must be resolveable as a UDP address, but got %v", data.ServerAddress)
+		}
 	}
 	if err := base64DecLength(data.SkinData, data.SkinImageHeight*data.SkinImageWidth*4); err != nil {
 		return fmt.Errorf("SkinData is invalid: %w", err)

@@ -61,6 +61,12 @@ func (s *Signaling) readSharedLoop() {
 		switch pk := pk.(type) {
 		case *discovery.RequestPacket:
 			s.record(senderID, addr, func(w *World) { w.Announced = true })
+			// Answer from the dedicated signalling socket (s.conn), NOT from
+			// this shared 7551 socket. The client uses the SOURCE address of
+			// the ResponsePacket as its signalling peer; replying from 7551
+			// would send WebRTC offers to a port Overlix also owns, and on
+			// Windows SO_REUSEADDR unicast is delivered to only one socket.
+			s.replyRequest(addr)
 		case *discovery.ResponsePacket:
 			raw := append([]byte(nil), pk.ApplicationData...)
 			host, hostErr := DecodeHostInfo(raw)

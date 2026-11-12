@@ -56,6 +56,11 @@ type config struct {
 	inputFlags   bool
 	noFail       bool
 	itemLog      int // max item log lines; 0 = none, <0 = unlimited
+	// liveItemRegistry resolves wire item runtime IDs against the registry the
+	// SERVER declared (GameData.Items) instead of the pinned protocol table.
+	// Needed for servers that inject custom items, e.g. Geyser's custom blocks.
+	// Default off: BDS/relay runs keep the exact-table assertion unchanged.
+	liveItemRegistry bool
 }
 
 func codecFor(id int32) (minecraft.Protocol, error) {
@@ -84,6 +89,26 @@ func sameItemIDs(a, b []protocol.ItemEntry) bool {
 		ids[e.Name] = e.RuntimeID
 	}
 	for _, e := range a {
+		if id, ok := ids[e.Name]; !ok || id != e.RuntimeID {
+			return false
+		}
+	}
+	return true
+}
+
+// pinnedItemsPresent is sameItemIDs without the length equality. A server may
+// declare extra custom items (Geyser's custom blocks do exactly that); what
+// must never happen is a pinned protocol item missing or remapped to a
+// different runtime ID. Duplicated names with conflicting IDs are rejected too.
+func pinnedItemsPresent(live, pinned []protocol.ItemEntry) bool {
+	ids := make(map[string]int16, len(live))
+	for _, e := range live {
+		if old, seen := ids[e.Name]; seen && old != e.RuntimeID {
+			return false
+		}
+		ids[e.Name] = e.RuntimeID
+	}
+	for _, e := range pinned {
 		if id, ok := ids[e.Name]; !ok || id != e.RuntimeID {
 			return false
 		}
@@ -241,9 +266,16 @@ func buildReport(s *session, cmdCount, cmdFailures int, quitReason string) repor
 		add("item_registry", false, "GameData().Items is empty")
 	default:
 		match := sameItemIDs(s.gd.Items, want)
+		detail := fmt.Sprintf("%d GameData entries vs %d pinned %d entries", len(s.gd.Items), len(want), s.proto)
+		if s.cfg.liveItemRegistry {
+			// Geyser declares its own custom items on top of the protocol table.
+			// Require the whole pinned table to be present with identical IDs;
+			// the extras are legitimate server-side additions, not lost items.
+			match = pinnedItemsPresent(s.gd.Items, want)
+			detail += fmt.Sprintf(" (live-registry mode, %d server custom extras)", len(s.gd.Items)-len(want))
+		}
 		r.ItemRegistryMatch = match
-		add("item_registry", match,
-			fmt.Sprintf("%d GameData entries vs %d pinned %d entries", len(s.gd.Items), len(want), s.proto))
+		add("item_registry", match, detail)
 	}
 
 	chunks := num("packet_LevelChunk")
@@ -332,25 +364,27 @@ func run() int {
 		inputFlags   = flag.Bool("input-flags", false, "set jump/sneak/sprint flags in PlayerAuthInput (bisect)")
 		noFail       = flag.Bool("nofail", false, "always exit 0 even when assertions fail (bisect)")
 		itemLog      = flag.Int("item-log", 24, "max ITEM_VISIBLE/ITEM_LOST/ITEM_UNKNOWN_ID log lines (0 = off, <0 = all)")
+		liveItems    = flag.Bool("live-item-registry", false, "resolve item IDs against the server's declared GameData (for Geyser/custom-item servers); item_registry then requires the pinned table to be a subset")
 	)
 	flag.Parse()
 
 	cfg := config{
-		addr:         *addr,
-		direct:       *direct,
-		proto:        int32(*proto),
-		name:         *name,
-		script:       *script,
-		jsonPath:     *jsonPath,
-		duration:     *duration,
-		spawnTimeout: *spawnTimeout,
-		auto:         *auto,
-		verbose:      *verbose,
-		noInput:      *noInput,
-		noSubchunk:   *noSubchunk,
-		inputFlags:   *inputFlags,
-		noFail:       *noFail,
-		itemLog:      *itemLog,
+		addr:             *addr,
+		direct:           *direct,
+		proto:            int32(*proto),
+		name:             *name,
+		script:           *script,
+		jsonPath:         *jsonPath,
+		duration:         *duration,
+		spawnTimeout:     *spawnTimeout,
+		auto:             *auto,
+		verbose:          *verbose,
+		noInput:          *noInput,
+		noSubchunk:       *noSubchunk,
+		inputFlags:       *inputFlags,
+		noFail:           *noFail,
+		itemLog:          *itemLog,
+		liveItemRegistry: *liveItems,
 	}
 	if cfg.spawnTimeout <= 0 || cfg.duration < 0 {
 		fmt.Fprintln(os.Stderr, "clientclone: -spawn-timeout must be > 0 and -duration >= 0")

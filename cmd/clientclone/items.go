@@ -47,6 +47,16 @@ func newItemIndex(proto int32) (itemIndex, error) {
 	if err != nil {
 		return itemIndex{}, err
 	}
+	return newItemIndexFromEntries(entries), nil
+}
+
+// newItemIndexFromEntries builds the index from the item registry a server
+// actually declared in StartGame/ItemRegistry. Runtime IDs on the wire are
+// server-defined, so this is the correct table for servers that add custom
+// items (Geyser's custom blocks/items are a superset of the pinned protocol
+// table). Resolving those against the pinned table reports them as unknown
+// even though the packet is perfectly valid.
+func newItemIndexFromEntries(entries []protocol.ItemEntry) itemIndex {
 	idx := itemIndex{
 		byID:   make(map[int32]string, len(entries)),
 		byName: make(map[string]int32, len(entries)),
@@ -56,7 +66,7 @@ func newItemIndex(proto int32) (itemIndex, error) {
 		idx.byID[int32(e.RuntimeID)] = e.Name
 		idx.byName[e.Name] = int32(e.RuntimeID)
 	}
-	return idx, nil
+	return idx
 }
 
 // itemStats is the per-session wire-level item census.

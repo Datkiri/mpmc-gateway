@@ -81,6 +81,7 @@ import (
 	"bedrock-cross-version-relay/internal/mcport"
 
 	"github.com/df-mc/go-nethernet"
+	"github.com/df-mc/go-nethernet/discovery"
 	"github.com/google/uuid"
 	"github.com/sandertv/gophertunnel/minecraft"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
@@ -1860,7 +1861,9 @@ func probeTargetsFor(ports []int) []*net.UDPAddr {
 }
 
 // discoverWorlds opens the discovery socket and waits until a usable LAN world appears.
-func discoverWorlds(ctx context.Context, timeout time.Duration) (*lansignal.Signaling, error) {
+// ingress carries the LAN-host advertisement settings (Announce/Advertise/Broadcasts)
+// so a -listen-nethernet relay also advertises itself while it looks for its host world.
+func discoverWorlds(ctx context.Context, timeout time.Duration, ingress lansignal.Options) (*lansignal.Signaling, error) {
 	localPorts := mcport.Find()
 	addr := "0.0.0.0:7551"
 	if len(localPorts) > 0 {
@@ -1869,9 +1872,18 @@ func discoverWorlds(ctx context.Context, timeout time.Duration) (*lansignal.Sign
 			"ports", mcport.Describe(localPorts))
 	}
 	extra := probeTargetsFor(localPorts)
-	ls, err := lansignal.Listen(lansignal.Options{Addr: addr, Log: slog.Default(), ExtraBroadcasts: extra})
+	opts := lansignal.Options{
+		Addr:            addr,
+		Log:             slog.Default(),
+		ExtraBroadcasts: extra,
+		Announce:        ingress.Announce,
+		Advertise:       ingress.Advertise,
+		Broadcasts:      ingress.Broadcasts,
+	}
+	ls, err := lansignal.Listen(opts)
 	if err != nil {
-		ls, err = lansignal.Listen(lansignal.Options{Addr: "0.0.0.0:0", Log: slog.Default(), ExtraBroadcasts: extra})
+		opts.Addr = "0.0.0.0:0"
+		ls, err = lansignal.Listen(opts)
 	}
 	if err != nil {
 		return nil, fmt.Errorf("listen discovery: %w", err)
@@ -2804,10 +2816,65 @@ func directWorld(addr string) lansignal.World {
 	}
 }
 
+// parseLANTargets turns "255.255.255.255:7551,192.168.1.255:7551" into UDP
+// addresses. An empty list tells lansignal to auto-detect broadcast addresses
+// on every up interface.
+func parseLANTargets(raw string) []*net.UDPAddr {
+	var out []*net.UDPAddr
+	for _, part := range strings.Split(raw, ",") {
+		part = strings.TrimSpace(part)
+		if part == "" {
+			continue
+		}
+		addr, err := net.ResolveUDPAddr("udp4", part)
+		if err != nil {
+			slog.Warn("xvrelay: ignoring invalid -lan-broadcast target", "target", part, "error", err)
+			continue
+		}
+		out = append(out, addr)
+	}
+	return out
+}
+
+// lanWorldCard builds the ServerData shown in the Friends-tab LAN world card.
+// AcceptsSelfSignedAuth=true is mandatory: a Bedrock client that is not signed
+// in to Xbox has no multiplayer token and must fall back to a self-signed JWT.
+// ConnectionType=4 means LAN/NetherNet, as vanilla uses.
+func lanWorldCard(name, level, version string, proto, maxPlayers int, offline bool) *discovery.ServerData {
+	return &discovery.ServerData{
+		ServerName:            name,
+		Protocol:              int32(proto),
+		Version:               version,
+		LevelName:             level,
+		GameType:              discovery.GameTypeSurvival,
+		PlayerCount:           0,
+		MaxPlayerCount:        int32(maxPlayers),
+		EditorWorld:           false,
+		Hardcore:              false,
+		AcceptsOnlineAuth:     !offline,
+		AcceptsSelfSignedAuth: true,
+		Nonce:                 "",
+		ConnectionType:        4,
+	}
+}
+
 func main() {
 	listenAddr := flag.String("listen", "0.0.0.0:19164", "address to listen on for clients (RakNet ingress; ignored with -listen-nethernet)")
 	listenNethernet := flag.Bool("listen-nethernet", false,
 		"CONN-002: accept clients over NetherNet/WebRTC LAN discovery instead of RakNet. The relay advertises on UDP 7551 through lansignal and reuses it as the signaling backend; -listen is ignored")
+	lanSignalIP := flag.String("lan-signal-ip", "0.0.0.0",
+		"local IPv4 the LAN host binds its signaling socket to. Set it to the REAL LAN IP (e.g. 192.168.1.219) so every ResponsePacket has a joinable source address instead of a WSL/Hyper-V virtual one")
+	lanSignalPort := flag.Int("lan-signal-port", 7551,
+		"UDP port the LAN host announces FROM and receives WebRTC signaling on. Use a port other than 7551 when Overlix already owns 7551, otherwise unicast offers can be delivered to the wrong SO_REUSEADDR socket")
+	lanBroadcast := flag.String("lan-broadcast", "",
+		"comma-separated UDP targets for LAN ResponsePackets, e.g. 255.255.255.255:7551,192.168.1.255:7551 (empty = auto-detect every up interface)")
+	lanName := flag.String("lan-name", "mpmc Java Gateway", "LAN world card: host/server name")
+	lanLevel := flag.String("lan-level", "Java 1.21.11 (Geyser)", "LAN world card: level name")
+	lanProto := flag.Int("lan-proto", 2225, "LAN world card: advertised Bedrock protocol ID")
+	lanVersion := flag.String("lan-version", "1.26.60", "LAN world card: advertised game version")
+	lanMaxPlayers := flag.Int("lan-max-players", 20, "LAN world card: max player count")
+	lanOfflineAuth := flag.Bool("lan-offline-auth", false,
+		"advertise AcceptsOnlineAuth=false so clients with no Xbox account go straight to self-signed login")
 	world := flag.String("world", "", "LAN world: level/host NAME (stable across re-opens) or NetworkID (empty = the only world found)")
 	timeout := flag.Duration("timeout", 20*time.Second, "how long to scan for LAN worlds")
 	trace := flag.Int("trace", 40, "print the first N packet names per direction (0 = off)")
@@ -2857,6 +2924,27 @@ func main() {
 		"dial the host once BEFORE opening the listener so the first client also receives the map's packs (needs -pack-mode download|limit)")
 	flag.Parse()
 	directHostAddr = *directHost
+
+	// LAN-255: with -listen-nethernet this relay IS a LAN host. It must
+	// proactively broadcast a ResponsePacket to .255:7551, otherwise an
+	// offline/no-Xbox Bedrock client (whose Servers tab is disabled) has no
+	// world card to tap.
+	lanTargets := parseLANTargets(*lanBroadcast)
+	lanIngress := lansignal.Options{Announce: *listenNethernet, Broadcasts: lanTargets}
+	if *listenNethernet {
+		lanIngress.Advertise = lanWorldCard(*lanName, *lanLevel, *lanVersion,
+			*lanProto, *lanMaxPlayers, *lanOfflineAuth)
+		slog.Info("xvrelay: LAN world card configured",
+			"name", *lanName, "level", *lanLevel, "protocol", *lanProto,
+			"version", *lanVersion, "signal_ip", *lanSignalIP, "signal_port", *lanSignalPort,
+			"broadcast_targets", func() []string {
+				out := make([]string, 0, len(lanTargets))
+				for _, t := range lanTargets {
+					out = append(out, t.String())
+				}
+				return out
+			}(), "offline_auth", *lanOfflineAuth)
+	}
 
 	if *versionFlag {
 		fmt.Printf("xvrelay %s\n", buildVersion)
@@ -2997,11 +3085,24 @@ func main() {
 			Addr: "0.0.0.0:0", NoBroadcast: true, Log: slog.Default(),
 		}
 		if *listenNethernet {
-			// CONN-002: a NetherNet ingress listener must be discoverable. Clients
-			// broadcast RequestPackets to UDP 7551 and expect a ResponsePacket
-			// from that same port, so the socket cannot stay ephemeral/mute even
-			// though the HOST side is dialled directly over RakNet.
-			opts = lansignal.Options{Addr: "0.0.0.0:7551", Log: slog.Default()}
+			// CONN-002 + LAN-255: a NetherNet ingress listener must be
+			// discoverable. Clients broadcast RequestPackets to UDP 7551 and
+			// expect a ResponsePacket, and a purely-listening offline client
+			// needs a proactive ResponsePacket broadcast as well.
+			//
+			// Announce FROM a dedicated port (-lan-signal-port, default 7551 but
+			// set to e.g. 8555 when Overlix owns 7551): the client uses the
+			// announcement's SOURCE address as its WebRTC signaling peer. On
+			// Windows two SO_REUSEADDR sockets share broadcast datagrams but NOT
+			// unicast ones, so announcing from 7551 could hand the client's
+			// OFFER to Overlix instead of to us.
+			opts = lansignal.Options{
+				Addr:       fmt.Sprintf("%s:%d", *lanSignalIP, *lanSignalPort),
+				Log:        slog.Default(),
+				Announce:   true,
+				Broadcasts: lanIngress.Broadcasts,
+				Advertise:  lanIngress.Advertise,
+			}
 		}
 		ls, err = lansignal.Listen(opts)
 		if err != nil {
@@ -3016,7 +3117,7 @@ func main() {
 	} else {
 		for attempt := 1; ; attempt++ {
 			var err error
-			ls, err = discoverWorlds(ctx, *timeout)
+			ls, err = discoverWorlds(ctx, *timeout, lanIngress)
 			if err == nil {
 				w, err = pickWorld(ls, *world)
 				if err == nil {

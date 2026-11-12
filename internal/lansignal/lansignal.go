@@ -83,9 +83,19 @@ type Signaling struct {
 	peersMu sync.RWMutex
 	peers   map[uint64]*World
 
-	// pongData is the ServerData we answer other clients' requests with. It is
-	// optional: without it we still discover peers, we simply never advertise.
+	// pongData is the ServerData we answer other clients' requests and broadcast
+	// announcements with. It is optional: without it we still discover peers, we
+	// simply never advertise.
 	pongData atomic.Pointer[[]byte]
+
+	// advertise pins pongData to a caller-supplied ServerData. A gophertunnel
+	// listener refreshes its MCPE pong every 4 seconds through PongData(); a LAN
+	// host that wants a deterministic world card must not be overwritten by it.
+	advertise atomic.Pointer[[]byte]
+
+	// noBroadcast suppresses the RequestPacket broadcastLoop. The same
+	// broadcasts list is still needed by announceLoop when Announce is set.
+	noBroadcast bool
 
 	notifiersMu sync.RWMutex
 	notifiers   map[uint32]nethernet.Notifier
@@ -112,9 +122,28 @@ type Options struct {
 	Log *slog.Logger
 	// NoBroadcast disables sending our own RequestPackets. Useful when another
 	// process already holds 7551 and we only want to observe its traffic.
+	// It does NOT disable Announce.
 	NoBroadcast bool
-	// ExtraBroadcasts are additional destinations for RequestPackets.
+	// ExtraBroadcasts are additional destinations for RequestPackets and
+	// ResponsePacket announcements.
 	ExtraBroadcasts []*net.UDPAddr
+
+	// Announce makes this Signaling behave like a LAN HOST: every
+	// broadcastInterval it sends a ResponsePacket carrying pongData/Advertise
+	// to every broadcast destination. Without it the Signaling only ANSWERS a
+	// RequestPacket, so a client that merely listens on 7551 never sees a
+	// world card. This is required for Bedrock clients that are not signed in
+	// to Xbox (they rely on the Friends-tab LAN list, not the Servers tab).
+	Announce bool
+	// Advertise pins the ServerData used in ResponsePackets. When non-nil it
+	// overrides (and locks out) the MCPE pong a gophertunnel listener pushes
+	// through PongData every few seconds.
+	Advertise *discovery.ServerData
+	// Broadcasts, when non-empty, REPLACES the auto-detected broadcast
+	// destination list. Use it to announce only on the real LAN interface,
+	// e.g. 255.255.255.255:7551 and 192.168.1.255:7551, instead of also
+	// emitting cards from virtual WSL/Hyper-V interfaces.
+	Broadcasts []*net.UDPAddr
 }
 
 // networkIDSeed guarantees unique network IDs for Signaling instances created
@@ -148,39 +177,66 @@ func Listen(opts Options) (*Signaling, error) {
 
 	conn, err := net.ListenPacket("udp4", opts.Addr)
 	if err != nil {
-		return nil, fmt.Errorf("bind %s: %w", opts.Addr, err)
+		// Overlix (and the game itself) often owns 0.0.0.0:7551 without
+		// SO_EXCLUSIVEADDRUSE. On Windows a second SO_REUSEADDR socket can bind
+		// the same port and still receives every broadcast datagram, so a LAN
+		// host can coexist with it instead of failing to start. Broadcasts are
+		// delivered to both sockets; Overlix is left completely untouched.
+		if shared, sharedErr := listenShared(opts.Addr); sharedErr == nil {
+			conn, err = shared, nil
+			opts.Log.Info("lansignal: primary bind busy, using shared SO_REUSEADDR socket",
+				"addr", opts.Addr)
+		} else {
+			return nil, fmt.Errorf("bind %s: %w (shared socket: %v)", opts.Addr, err, sharedErr)
+		}
 	}
 
 	local, _ := conn.LocalAddr().(*net.UDPAddr)
 	s := &Signaling{
-		conn:      conn,
-		networkID: nextNetworkID(),
-		log:       opts.Log,
-		peers:     make(map[uint64]*World),
-		notifiers: make(map[uint32]nethernet.Notifier),
-		closed:    make(chan struct{}),
+		conn:        conn,
+		networkID:   nextNetworkID(),
+		log:         opts.Log,
+		noBroadcast: opts.NoBroadcast,
+		peers:       make(map[uint64]*World),
+		notifiers:   make(map[uint32]nethernet.Notifier),
+		closed:      make(chan struct{}),
 	}
 
-	if !opts.NoBroadcast {
-		// Broadcast to both the limited broadcast address and the subnet-directed
-		// one: Windows routes them differently and a host may only answer one.
-		s.broadcasts = []*net.UDPAddr{{IP: net.IPv4bcast, Port: DefaultPort}}
-		if local != nil {
-			if ip := local.IP.To4(); ip != nil && !ip.IsUnspecified() {
-				s.broadcasts = append(s.broadcasts, &net.UDPAddr{
-					IP:   net.IPv4(ip[0], ip[1], ip[2], 255),
-					Port: DefaultPort,
-				})
+	if !opts.NoBroadcast || opts.Announce {
+		if len(opts.Broadcasts) > 0 {
+			// Explicit list: announce ONLY on the interfaces the caller wants.
+			s.broadcasts = append(s.broadcasts, opts.Broadcasts...)
+		} else {
+			// Broadcast to both the limited broadcast address and the subnet-directed
+			// one: Windows routes them differently and a host may only answer one.
+			s.broadcasts = []*net.UDPAddr{{IP: net.IPv4bcast, Port: DefaultPort}}
+			if local != nil {
+				if ip := local.IP.To4(); ip != nil && !ip.IsUnspecified() {
+					s.broadcasts = append(s.broadcasts, &net.UDPAddr{
+						IP:   net.IPv4(ip[0], ip[1], ip[2], 255),
+						Port: DefaultPort,
+					})
+				}
 			}
-		}
-		for _, ip := range interfaceBroadcasts() {
-			s.broadcasts = append(s.broadcasts, &net.UDPAddr{IP: ip, Port: DefaultPort})
+			for _, ip := range interfaceBroadcasts() {
+				s.broadcasts = append(s.broadcasts, &net.UDPAddr{IP: ip, Port: DefaultPort})
+			}
 		}
 		s.broadcasts = append(s.broadcasts, opts.ExtraBroadcasts...)
 	}
 
+	if opts.Advertise != nil {
+		if err := s.SetAdvertisement(opts.Advertise); err != nil {
+			_ = conn.Close()
+			return nil, err
+		}
+	}
+
 	go s.readLoop()
 	go s.broadcastLoop()
+	if opts.Announce {
+		go s.announceLoop()
+	}
 	go s.expireLoop()
 	// ★ Also listen on port 7551 through a SO_REUSEADDR socket. Needed when we have to bind an
 	// ephemeral port because the host application already holds 7551: such a world does NOT answer
@@ -250,6 +306,12 @@ func (s *Signaling) NetworkID() string {
 // A LAN ResponsePacket carries BINARY ServerData, not the MCPE string, so the
 // former has to be converted here or LAN clients cannot display this server.
 func (s *Signaling) PongData(b []byte) {
+	// A pinned LAN advertisement wins. gophertunnel refreshes its MCPE pong
+	// every 4 seconds; without this guard the world card would silently revert
+	// to the listener's generic name/protocol mid-session.
+	if s.advertise.Load() != nil {
+		return
+	}
 	var raw []byte
 	if strings.HasPrefix(string(b), "MCPE;") {
 		converted, err := serverDataFromPong(b)
@@ -262,6 +324,23 @@ func (s *Signaling) PongData(b []byte) {
 		raw = append([]byte(nil), b...)
 	}
 	s.pongData.Store(&raw)
+}
+
+// SetAdvertisement pins the ServerData used for LAN ResponsePackets, both the
+// proactive announcement and the unicast reply to a RequestPacket. It is what
+// a LAN host uses to give the world card a stable name, protocol and version
+// instead of the generic MCPE pong a gophertunnel listener produces.
+func (s *Signaling) SetAdvertisement(d *discovery.ServerData) error {
+	if d == nil {
+		return fmt.Errorf("nil ServerData")
+	}
+	raw, err := d.MarshalBinary()
+	if err != nil {
+		return fmt.Errorf("marshal LAN ServerData: %w", err)
+	}
+	s.advertise.Store(&raw)
+	s.pongData.Store(&raw)
+	return nil
 }
 
 // serverDataFromPong converts gophertunnel's MCPE pong line into the binary
@@ -697,7 +776,7 @@ func (s *Signaling) deliver(signal *nethernet.Signal) {
 // broadcastLoop periodically sends RequestPackets so hosts that *do* listen on
 // 7551 answer us, complementing the passive discovery of announcing hosts.
 func (s *Signaling) broadcastLoop() {
-	if len(s.broadcasts) == 0 {
+	if s.noBroadcast || len(s.broadcasts) == 0 {
 		return
 	}
 	pk := discovery.Marshal(&discovery.RequestPacket{}, s.networkID)
@@ -717,6 +796,52 @@ func (s *Signaling) broadcastLoop() {
 		}
 	}
 	send() // send immediately so a short timeout still finds worlds
+	for {
+		select {
+		case <-s.closed:
+			return
+		case <-ticker.C:
+			send()
+		}
+	}
+}
+
+// announceLoop proactively advertises this Signaling as a LAN WORLD.
+//
+// A vanilla Bedrock host broadcasts a ResponsePacket (id 1) carrying binary
+// ServerData to 255.255.255.255:7551 and to the subnet-directed broadcast every
+// couple of seconds. Clients LISTEN on 7551 and render a world card in the
+// Friends tab from those announcements. replying to a RequestPacket alone is
+// NOT equivalent: an offline/no-Xbox client can be pure listener, and the
+// Servers tab is disabled for it, so without this loop it never sees a world.
+//
+// Only enabled through Options.Announce; existing callers keep their old
+// "discover other worlds" behaviour untouched.
+func (s *Signaling) announceLoop() {
+	if len(s.broadcasts) == 0 {
+		return
+	}
+	ticker := time.NewTicker(broadcastInterval)
+	defer ticker.Stop()
+
+	send := func() {
+		data := s.pongData.Load()
+		if data == nil || len(*data) == 0 {
+			return // no ServerData yet; the listener may not have called PongData
+		}
+		pk := discovery.Marshal(&discovery.ResponsePacket{ApplicationData: *data}, s.networkID)
+		for _, dst := range s.broadcasts {
+			if _, err := s.conn.WriteTo(pk, dst); err != nil {
+				select {
+				case <-s.closed:
+					return
+				default:
+				}
+				s.log.Debug("lansignal: announce failed", "dst", dst, "error", err)
+			}
+		}
+	}
+	send() // announce immediately; do not make the client wait a full tick
 	for {
 		select {
 		case <-s.closed:

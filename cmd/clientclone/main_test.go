@@ -6,6 +6,7 @@ import (
 	"strings"
 	"testing"
 
+	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
 
@@ -207,5 +208,47 @@ func TestPacketName(t *testing.T) {
 	}
 	if got := packetName(&packet.NetworkStackLatency{}); !strings.Contains(got, "NetworkStackLatency") {
 		t.Fatalf("packetName = %q", got)
+	}
+}
+
+// -live-item-registry must accept a server registry that is a superset of the
+// pinned protocol table (Geyser's custom items), but must still reject a
+// missing or remapped pinned item.
+func TestPinnedItemsPresent(t *testing.T) {
+	pinned := []protocol.ItemEntry{
+		{Name: "minecraft:stone", RuntimeID: 1},
+		{Name: "minecraft:oak_planks", RuntimeID: 5},
+	}
+	superset := []protocol.ItemEntry{
+		{Name: "minecraft:stone", RuntimeID: 1},
+		{Name: "minecraft:oak_planks", RuntimeID: 5},
+		{Name: "geyser:custom_block", RuntimeID: 2081},
+	}
+	if !pinnedItemsPresent(superset, pinned) {
+		t.Fatal("superset registry must be accepted")
+	}
+	if pinnedItemsPresent(pinned[:1], pinned) {
+		t.Fatal("missing pinned item must be rejected")
+	}
+	remapped := []protocol.ItemEntry{
+		{Name: "minecraft:stone", RuntimeID: 1},
+		{Name: "minecraft:oak_planks", RuntimeID: 99},
+	}
+	if pinnedItemsPresent(remapped, pinned) {
+		t.Fatal("remapped runtime ID must be rejected")
+	}
+	conflicting := []protocol.ItemEntry{
+		{Name: "minecraft:stone", RuntimeID: 1},
+		{Name: "minecraft:stone", RuntimeID: 2},
+		{Name: "minecraft:oak_planks", RuntimeID: 5},
+	}
+	if pinnedItemsPresent(conflicting, pinned) {
+		t.Fatal("duplicate name with conflicting IDs must be rejected")
+	}
+	if !sameItemIDs(pinned, pinned) {
+		t.Fatal("sameItemIDs exact match must be true")
+	}
+	if sameItemIDs(superset, pinned) {
+		t.Fatal("sameItemIDs must still require equal length")
 	}
 }

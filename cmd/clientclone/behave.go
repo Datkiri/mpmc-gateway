@@ -307,7 +307,16 @@ func (s *session) join(addr string, direct bool, protoOverride int32, nameOverri
 	// Resolve live item IDs against the CLIENT's own protocol table: the relay
 	// encodes target-protocol IDs on the wire. Build the index before starting
 	// the read loop so observeItems() never sees a half-built map.
-	if idx, err := newItemIndex(protoID); err != nil {
+	// With -live-item-registry, use the registry the SERVER declared instead:
+	// Geyser injects custom items whose runtime IDs are absent from the pinned
+	// protocol table, so the pinned table would misreport them as unknown.
+	if s.cfg.liveItemRegistry {
+		idx := newItemIndexFromEntries(s.gd.Items)
+		s.itemsIndex = idx
+		s.itemsReady.Store(true)
+		fmt.Fprintf(os.Stderr, "clientclone: item index ready proto=%d entries=%d (server-declared live registry)\n",
+			protoID, idx.count)
+	} else if idx, err := newItemIndex(protoID); err != nil {
 		slog.Warn("clientclone: item index unavailable", "proto", protoID, "error", err)
 	} else {
 		s.itemsIndex = idx
