@@ -69,22 +69,34 @@ CGO_ENABLED=0 GOOS=darwin  GOARCH=arm64 go build -buildvcs=false -trimpath -o di
 
 ### The diagnostic matrix
 
-`go test ./...` runs the fast checks. The full 4×4 protocol matrix is opt-in because it is a
-diagnostic report, not a pass/fail gate:
+`go test ./...` runs the fast checks. The 5×5 protocol matrix is opt-in and writes a
+ diagnostic report; any reported finding also fails the test:
 
 ```bash
 XVER_MATRIX_REPORT=matrix.json go test ./cmd/xvrelay -run TestProtocolCompatibilityMatrix -v
 ```
 
-It produces 16 pairs × 7 checks. Read the `findings` array; a pair with findings is a to-do item, not
-a crash.
+It covers protocols `1001`, `2168`, `2169`, `2193`, and `2225`: 25 pairs × 8 checks.
+Read the `findings` array; an empty array proves only these synthetic codec checks passed,
+not that every gameplay packet or a real client session works.
+
+Rechecked 2026-11-15: all 200 synthetic checks passed. A separate live check used
+BDS protocol 2193 at `127.0.0.1:19152`, relay `127.0.0.1:19164`, and freshly built
+`cmd/selfcheck` clients for all five protocols with `-spawn-timeout 20s -soak 5s`.
+All five sessions spawned, received registries and 113 LevelChunk packets each,
+and completed the soak with exit 0. Registry item counts were respectively
+1933, 1976, 1976, 2076, and 2080. This does not verify GUI rendering, block/inventory
+interactions, long-running stability, or live hosts on the other four protocols.
+Relay logs also warned about unavailable host packs, discovery fallback for the direct
+RakNet endpoint, and dropping 98 host custom blocks for a different-version client;
+successful spawn must not be interpreted as preservation of those custom blocks.
 
 ## Layout
 
 | Path | What lives there |
 |---|---|
 | `cmd/xvrelay/` | the binary: flags, listener, spawn gate, capture/replay, tests |
-| `cmd/xvrelay/protocol_matrix_test.go` | the 4×4 diagnostic matrix |
+| `cmd/xvrelay/protocol_matrix_test.go` | the 5×5 diagnostic matrix |
 | `internal/blocktranslate/` | palette loading, typed state hashing, SubChunk v8↔v9, chunk tail preservation |
 | `internal/blocktranslate/data/` | pinned palettes `1001.nbt`, `2168.nbt`, `2193.nbt` + `manifest.json` (commit + SHA-256) |
 | `internal/lansignal/` | LAN discovery on **UDP 7551**, `ServerData` v5/v6/v7 decoding |

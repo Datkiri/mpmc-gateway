@@ -42,20 +42,20 @@ func moduleRoot(t *testing.T) string {
 	}
 }
 
-// Diagnostic matrix, opt-in because known failures are useful regression cases
-// rather than a claim that all protocol pairs already support gameplay.
+// Opt-in diagnostic matrix covering all five supported protocol families.
+// Findings fail the test; success only validates these synthetic fixtures, not gameplay.
 // XVER_MATRIX_REPORT is a caller-selected JSON report path.
 func TestProtocolCompatibilityMatrix(t *testing.T) {
 	path := os.Getenv("XVER_MATRIX_REPORT")
 	if path == "" {
-		t.Skip("set XVER_MATRIX_REPORT to run the diagnostic 4x4 matrix")
+		t.Skip("set XVER_MATRIX_REPORT to run the diagnostic 5x5 matrix")
 	}
 	// `go test` runs with the working directory set to this package, so a relative report path
 	// such as dist/matrix.json would land in cmd/xvrelay/dist/. Anchor it to the module root.
 	if !filepath.IsAbs(path) {
 		path = filepath.Join(moduleRoot(t), path)
 	}
-	ids := []int32{1001, 2168, 2169, 2193}
+	ids := []int32{1001, 2168, 2169, 2193, 2225}
 	var results []matrixResult
 	for _, clientID := range ids {
 		conn := negotiatedConn(t, clientID)
