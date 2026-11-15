@@ -19,29 +19,66 @@ package net.raphimc.viabedrock.protocol.task;
 
 import com.viaversion.viaversion.api.Via;
 import com.viaversion.viaversion.api.connection.UserConnection;
+import io.netty.channel.Channel;
+import io.netty.util.AttributeKey;
 import net.raphimc.viabedrock.protocol.BedrockProtocol;
+import net.raphimc.viabedrock.protocol.MpmcPipelineDiagnostics;
 import net.raphimc.viabedrock.protocol.storage.ChunkTracker;
 
+import java.util.concurrent.atomic.AtomicBoolean;
+
 public class ChunkTrackerTickTask implements Runnable {
+
+    private static final AttributeKey<AtomicBoolean> TICK_PENDING = AttributeKey.valueOf("viabedrock-chunk-tick-pending");
 
     @Override
     public void run() {
         for (UserConnection info : Via.getManager().getConnectionManager().getConnections()) {
-            final ChunkTracker chunkTracker = info.get(ChunkTracker.class);
-            if (chunkTracker != null) {
-                info.getChannel().eventLoop().submit(() -> {
-                    if (!info.getChannel().isActive()) {
-                        return;
-                    }
-
+            if (info.has(ChunkTracker.class)) {
+                final long queuedAt = MpmcPipelineDiagnostics.timingNow();
+                enqueueTick(info.getChannel(), () -> {
+                    final long startedAt = MpmcPipelineDiagnostics.timingNow();
                     try {
-                        chunkTracker.tick();
+                        final ChunkTracker chunkTracker = info.get(ChunkTracker.class);
+                        if (chunkTracker != null) {
+                            chunkTracker.tick();
+                        }
                     } catch (final Throwable e) {
                         BedrockProtocol.kickForIllegalState(info, "Error ticking chunk tracker. See console for details.", e);
+                    } finally {
+                        MpmcPipelineDiagnostics.recordTask(info, true, queuedAt, startedAt);
                     }
                 });
             }
         }
+    }
+
+    static boolean enqueueTick(final Channel channel, final Runnable tick) {
+        AtomicBoolean pending = channel.attr(TICK_PENDING).get();
+        if (pending == null) {
+            final AtomicBoolean created = new AtomicBoolean();
+            final AtomicBoolean existing = channel.attr(TICK_PENDING).setIfAbsent(created);
+            pending = existing != null ? existing : created;
+        }
+        if (!pending.compareAndSet(false, true)) {
+            return false;
+        }
+        final AtomicBoolean guard = pending;
+        try {
+            channel.eventLoop().submit(() -> {
+                try {
+                    if (channel.isActive()) {
+                        tick.run();
+                    }
+                } finally {
+                    guard.set(false);
+                }
+            });
+        } catch (final RuntimeException | Error e) {
+            guard.set(false);
+            throw e;
+        }
+        return true;
     }
 
 }

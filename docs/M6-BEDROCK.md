@@ -26,6 +26,13 @@ Minecraft Java client (1.21.11)
 
 ## 2. Phiên bản đã kiểm chứng
 
+**Current lab gateway (2026-11-15):** source pin and deployed jar are
+`3.4.14-mpmc.19`, SHA-256
+`7a692652e8116e0a07e2e06082a0ccbade5d638770c730bf6cb0ef64588c02db`.
+See §11 for deployment, bounded validation and remaining failures. The `.18` version/hash
+and measurements below describe the earlier validated release. Agent packaging and the
+extracted-release CLI verification of `.19` have passed; see §11.1 for evidence and scope.
+
 | Thành phần | Phiên bản | Ghi chú |
 |---|---|---|
 | ViaProxy | 3.4.14 | Java client 1.7.2–26.3; đích Bedrock trong `--list-versions`: **Bedrock 1.26.51** |
@@ -1039,8 +1046,11 @@ Không đánh dấu PASS cho phần này.
   (`172.31.80.1:8554`, `192.168.1.219:8554`), **0 `ResponsePacket`** ⇒ không có world LAN nào đang
   mở, nên chưa thể test. Đổi chiều Overworld ↔ Nether qua portal **đã kiểm chứng** trên BDS test
   riêng (mục 5.4); riêng đích LAN NetherNet / byulnuri vẫn **[Chưa xác minh]**.
-- 77/169 packet clientbound Bedrock không có đối tác Java: 21 `cancelClientbound` tường minh
-  (mục 5.3) + 56 phân loại trong `CLIENTBOUND_DISPOSITIONS` (mục 5.5). Chúng **không** được dịch
+- 77/169 Bedrock clientbound packet types are not translated: 21 explicit
+  `cancelClientbound` registrations (§5.3) + 56 entries in `CLIENTBOUND_DISPOSITIONS` (§5.5).
+  These are not all without Java counterparts: **9 remain `java-counterpart-unmapped`**
+  and have no semantic translator. Registration/cancellation coverage is not semantic coverage.
+  Chúng **không** được dịch
   thành gói Java mà được đăng ký, tiêu thụ và kết thúc sạch có audit. Trên `.6` đã chốt
   **169/169 clientbound + 69/69 Java serverbound được quyết định tường minh, 0 fallback**; số đo
   runtime 6 phiên: **PRE 11.974 = POST 6.923 + CANCEL 5.006 + DEFERRED 45**, 0 `ERROR`,
@@ -1263,4 +1273,82 @@ qua RakNet bằng `clientclone` ở §10.1); prompt **TOFU** lần join đầu; 
 `-lan-proto`/`-lan-version` có thể đổi nếu client thật dùng version khác — relay vẫn chấp
 nhận `1001/2168/2169/2193/2225` trên wire. §0 giữ nguyên: không đụng agent, không nhúng
 GPL vào `mpmc-agent-*.zip`, gateway agent vẫn bind loopback.
+
+## 11. Current `.19` candidate evidence and remaining failures (2026-11-15)
+
+These results cover candidate and official `.19` validation. `BedrockGateway.kt` now pins
+`3.4.14-mpmc.19` with the official SHA-256 recorded in §11.1; deployment to the lab gateway
+has been confirmed. At the time of the initial candidate tests, the final `.19` build was
+still in progress; its subsequent build result is recorded below.
+Candidate identifier `2607d32d7` identifies the tested candidate, not the final `.19` hash.
+
+The flight A/B established a specific host-side difference on BDS protocol 2193: with
+`.18` / `RequestAbility` disabled, the host reported `Flying=false`; with the request
+enabled, the host reported `Flying=true` and confirmed flight and stop. The request is
+now sent for permitted flight-state transitions. The host `MayFly` permission guard remains
+in force; this does not grant flight permission locally.
+
+| Validation | Observed result |
+|---|---|
+| Java 1.21.4, exact-version host-position checks | Movement, ascent, horizontal flight, descent and stop **PASS** |
+| Java 1.21.4, transition hold | Initial hold assertion **FAIL**. The test-design trace records one `+0.535`-block correction about `0.32` seconds into the `4`-second hold, followed by unchanged Y for the remaining `3.68` seconds. Later stability does not erase the initial failure |
+| Java 1.21.1, earlier candidate run | Host flight confirmation and stop hold **PASS**; earlier sprint-ratio and synthetic flight-displacement checks **FAIL**. The official sprint results below supersede the earlier sprint result |
+| Actual-class regression tests, candidate `2607d32d7` | **4 tests PASS**, including the passenger fix; this is bounded regression evidence, not full gameplay coverage |
+
+Flight activation is therefore demonstrated, while transition hold and the listed
+version-specific checks remain unresolved. The nine clientbound
+`java-counterpart-unmapped` packet types, unsupported workstation/container flows, and
+recipe translation remain explicit gaps. Packet accounting, compilation and these tests
+do not establish 100% semantic support. Historical `.14`–`.18` evidence remains unchanged;
+current serverbound classification distinctions are recorded in
+`M6-PACKET-INVENTORY.md` §10.
+
+### 11.1 Official `.19` build and additional inventory evidence
+
+The official `.19` artifact was built through ViaBedrock `publishToMavenLocal` followed by
+the ViaProxy jar build. Its SHA-256 is
+`7a692652e8116e0a07e2e06082a0ccbade5d638770c730bf6cb0ef64588c02db`.
+The JDK 21 official-artifact rerun **PASSed all 4 actual-class regressions**: Entity,
+Flight (126 toggle sequences), Inventory (15 cases) and Timing; task `4I9epx` exited `0`.
+Evidence: `D:/tmp/codebuddy-Acer/d-Documents-Muti Player For MCPE/e2c02271-3e0e-4466-a6b9-66f558244916/bg-tasks/4I9epx.stdout.log`.
+The earlier JDK 17 attempt failed before assertions on class-file version 65. The standalone
+JDK 21 harness still emitted Log4j `ip_redactor` errors on stderr; these were not observed
+in normal runtime. These bounded test passes do not establish that the runtime matrix passes.
+Bytecode comparison identified differences in `ViaBedrock`, `ViaBedrockPlatform` and
+`JoinPackets` associated with token replacement; normalized validation is still pending.
+An assertion that only `BuildConstants` differs is not supported.
+
+The candidate-2 inventory runs recorded **66 accepted, 0 rejected**, with **4 offhand
+requests filtered**. The initial attempt of the fourth run became stuck in `CONFIG`;
+that failure remains unresolved. Retrying with a fresh username passed, which does not
+establish the cause of the earlier configuration stall.
+
+The latest official test-design results supersede the earlier candidate sprint result:
+
+| Official `.19` client | Passing checks | Remaining failures |
+|---|---|---|
+| Java 1.21.1 | Active sprint ratio `1.28569` **PASS**; settled sprint ratio **PASS** | Post-sprint idle drift `0.605484` blocks **FAIL**; synthetic ascent bound **FAIL** |
+| Java 1.21.4 | Active sprint ratio `1.30070` **PASS** | Synthetic hold-transition correction `+0.5353` blocks **FAIL** |
+
+Deployment is confirmed at `_m6/gw-data/gateway/ViaProxy-3.4.14.jar`: its SHA-256 is
+`7a692652e8116e0a07e2e06082a0ccbade5d638770c730bf6cb0ef64588c02db`, matching the `.19`
+source pin. The adjacent backup `ViaProxy-3.4.14.jar.prev18` retains the verified `.18`
+SHA-256 `bdeab29f84e9bfa81714da15da49e611438d04e71aa93d088ec0854bdf4f78f8`.
+The official test endpoint is running on port `25608`. Gateway tests completed with
+**8 tests, 0 failures, 0 errors**, and `packageAgent` exited `0`. The release ZIP contains
+**62 unique entries** and no ViaProxy, ViaBedrock or `gateway-build` content; its SHA-256 is
+`913f542b90789b4a46b75b5195dff9610d053067340f4c20eb35c0fa7ecbf2ca`.
+After extraction into `_m6/release-check19`, the extracted `mpmc.bat --data-dir _m6/gw-data
+gateway verify` exited `0` and confirmed the matching SHA for `3.4.14-mpmc.19`.
+Evidence: `_m6/logs/agent19-test-package.log` and `_m6/logs/release19-gateway-verify.log`.
+These packaging and CLI checks do not change the gameplay failures above.
+The official runtime audit recorded **7,689 records**, with **PRE 3,808 = POST 1,481 +
+CANCEL 2,317 + DEFERRED 10**, and **0 detected audit errors**. It observed **52 clientbound
+packet types**, **22 serverbound packet types**, **1,136 POST-to-host events** and **38
+`CORRECT_PLAYER_MOVE_PREDICTION` packets**. `CRAFTING_DATA`, `TRIM_DATA` and
+`UNLOCKED_RECIPES` remained unmapped. The audit establishes that observed PRE events were
+accounted for without detected audit errors; it does **not** establish semantic completeness.
+
+These bounded passes do not imply an overall **PASS**. The remaining failures and
+unimplemented packet/container/recipe gaps stay open.
 

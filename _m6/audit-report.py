@@ -105,9 +105,11 @@ def main(paths):
         print('  ! ' + e)
     print()
 
-    ok = (terminal == len(cb_pre) + len(sb_pre) and not cb_unhandled and not cb_unknown
+    traffic_observed = bool(cb_pre) and bool(sb_pre)
+    print('bidirectional traffic observed = %s' % ('YES' if traffic_observed else 'NO'))
+    ok = (traffic_observed and terminal == len(cb_pre) + len(sb_pre) and not cb_unhandled and not cb_unknown
           and not sb_unmapped and not err_phase and not err_lines and not all_errors)
-    print('VERDICT: %s' % ('PASS - 100% accounted, zero errors' if ok else 'FAIL - review above'))
+    print('VERDICT: %s' % ('PASS - observed PRE records accounted for, no detected audit errors; not semantic translation completeness' if ok else 'FAIL - review above'))
     return 0 if ok else 1
 
 

@@ -172,6 +172,10 @@ public class Entity {
         this.position = position;
     }
 
+    public void updatePosition(final boolean hasX, final float x, final boolean hasY, final float y, final boolean hasZ, final float z) {
+        this.setPosition(new Position3f(hasX ? x : this.position.x(), hasY ? y : this.position.y(), hasZ ? z : this.position.z()));
+    }
+
     public Position3f rotation() {
         return this.rotation;
     }
@@ -194,11 +198,12 @@ public class Entity {
 
     public Set<ActorFlags> entityFlags() {
         BigInteger combinedFlags = BigInteger.ZERO;
+        final BigInteger wordMask = BigInteger.ONE.shiftLeft(Long.SIZE).subtract(BigInteger.ONE);
         if (this.entityData.containsKey(ActorDataIds.RESERVED_0)) {
-            combinedFlags = combinedFlags.add(BigInteger.valueOf(this.entityData.get(ActorDataIds.RESERVED_0).<Long>value().longValue()));
+            combinedFlags = BigInteger.valueOf(this.entityData.get(ActorDataIds.RESERVED_0).<Long>value().longValue()).and(wordMask);
         }
         if (this.entityData.containsKey(ActorDataIds.RESERVED_092)) {
-            combinedFlags = combinedFlags.add(BigInteger.valueOf(this.entityData.get(ActorDataIds.RESERVED_092).<Long>value().longValue()).shiftLeft(64));
+            combinedFlags = combinedFlags.or(BigInteger.valueOf(this.entityData.get(ActorDataIds.RESERVED_092).<Long>value().longValue()).and(wordMask).shiftLeft(Long.SIZE));
         }
         return EnumUtil.getEnumSetFromBitmask(ActorFlags.class, combinedFlags, ActorFlags::getValue);
     }

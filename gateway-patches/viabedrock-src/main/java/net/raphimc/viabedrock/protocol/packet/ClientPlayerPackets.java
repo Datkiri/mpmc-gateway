@@ -283,15 +283,24 @@ public final class ClientPlayerPackets {
             switch (action) {
                 case START_SPRINTING -> {
                     clientPlayer.setSprinting(true);
+                    clientPlayer.authInputData().remove(PlayerAuthInputData.StopSprinting);
                     clientPlayer.addAuthInputData(PlayerAuthInputData.StartSprinting);
                 }
                 case STOP_SPRINTING -> {
                     clientPlayer.setSprinting(false);
+                    clientPlayer.authInputData().remove(PlayerAuthInputData.StartSprinting);
                     clientPlayer.addAuthInputData(PlayerAuthInputData.StopSprinting);
                 }
                 case START_FALL_FLYING -> {
                     clientPlayer.setGliding(true);
                     clientPlayer.addAuthInputData(PlayerAuthInputData.StartGliding);
+                }
+                case STOP_SLEEPING -> clientPlayer.sendPlayerActionPacketToServer(PlayerActionType.StopSleeping);
+                case START_RIDING_JUMP, STOP_RIDING_JUMP, OPEN_INVENTORY -> {
+                    if (Boolean.getBoolean("mpmc.audit")) {
+                        ViaBedrock.getPlatform().getLogger().info("[AUDIT] CLASSIFIED dir=SERVERBOUND name=PLAYER_COMMAND action="
+                            + action + " reason=bedrock-counterpart-unimplemented");
+                    }
                 }
                 default -> throw new IllegalStateException("Unhandled PlayerCommandAction: " + action);
             }
@@ -510,7 +519,10 @@ public final class ClientPlayerPackets {
                 clientPlayer.addAuthInputData(PlayerAuthInputData.SneakDown, PlayerAuthInputData.Sneaking, PlayerAuthInputData.WantDown, PlayerAuthInputData.SneakCurrentRaw);
             }
             if (clientPlayer.inputFlags().contains(InputFlag.SPRINT)) {
-                clientPlayer.addAuthInputData(PlayerAuthInputData.SprintDown, PlayerAuthInputData.Sprinting);
+                clientPlayer.addAuthInputData(PlayerAuthInputData.SprintDown);
+            }
+            if (clientPlayer.isSprinting()) {
+                clientPlayer.addAuthInputData(PlayerAuthInputData.Sprinting);
             }
             if (clientPlayer.inputFlags().contains(InputFlag.JUMP) && !prevInputFlags.contains(InputFlag.JUMP)) {
                 clientPlayer.addAuthInputData(PlayerAuthInputData.JumpPressedRaw);
@@ -554,6 +566,7 @@ public final class ClientPlayerPackets {
             wrapper.write(BedrockTypes.POSITION_3F, clientPlayer.position()); // position
             wrapper.write(BedrockTypes.POSITION_2F, MathUtil.calculateMovementDirections(clientPlayer.authInputData(), clientPlayer.isSneaking())); // move vector
             wrapper.write(BedrockTypes.FLOAT_LE, clientPlayer.rotation().z()); // head yaw
+            clientPlayer.reconcileFlightTransition();
             wrapper.write(BedrockTypes.UNSIGNED_VAR_INT, clientPlayer.authInputData().size()); // input flags count
             for (PlayerAuthInputData inputData : PlayerAuthInputData.values()) {
                 if (clientPlayer.authInputData().contains(inputData)) {
@@ -610,6 +623,7 @@ public final class ClientPlayerPackets {
             wrapper.write(BedrockTypes.POSITION_3F, MathUtil.calculateCameraOrientation(clientPlayer.rotation().y(), clientPlayer.rotation().x())); // camera orientation
             wrapper.write(BedrockTypes.POSITION_2F, MathUtil.calculateMovementDirections(clientPlayer.authInputData(), false)); // raw move vector
 
+            net.raphimc.viabedrock.protocol.MpmcPipelineDiagnostics.recordAuthInput(wrapper.user());
             clientPlayer.authInputData().clear();
             clientPlayer.authInputBlockActions().clear();
         });
@@ -618,9 +632,20 @@ public final class ClientPlayerPackets {
             final ClientPlayerEntity clientPlayer = wrapper.user().get(EntityTracker.class).getClientPlayer();
             final byte flags = wrapper.read(Types.BYTE); // flags
             final boolean flying = (flags & AbilitiesFlag.FLYING.getBit()) != 0;
+            if (Boolean.getBoolean("mpmc.flight.debug")) {
+                ViaBedrock.getPlatform().getLogger().info("[FLIGHT] request flying=" + flying + " mayFly=" + clientPlayer.abilities().getBooleanValue(AbilitiesIndex.MayFly));
+            }
+            if (!clientPlayer.canRequestFlight(flying)) {
+                clientPlayer.setAbilities(clientPlayer.abilities());
+                return;
+            }
             if (flying != clientPlayer.abilities().getBooleanValue(AbilitiesIndex.Flying)) {
+                // BDS protocol 2193 A/B tests require this request; auth-input StartFlying alone is reset by the host.
+                final PacketWrapper requestAbility = PacketWrapper.create(ServerboundBedrockPackets.REQUEST_ABILITY, wrapper.user());
+                writeFlightAbilityRequest(requestAbility, flying);
+                requestAbility.sendToServer(BedrockProtocol.class);
                 clientPlayer.abilities().getOrCreateCacheLayer().setAbility(AbilitiesIndex.Flying, flying);
-                clientPlayer.addAuthInputData(flying ? PlayerAuthInputData.StartFlying : PlayerAuthInputData.StopFlying);
+                clientPlayer.queueFlightTransition(flying);
             }
         });
         protocol.registerServerbound(ServerboundPackets26_3.CHANGE_GAME_MODE, ServerboundBedrockPackets.SET_PLAYER_GAME_TYPE, new PacketHandlers() {
@@ -636,10 +661,7 @@ public final class ClientPlayerPackets {
                         default -> throw new IllegalStateException("Unhandled GameMode: " + gameMode);
                     };
                     wrapper.write(BedrockTypes.VAR_INT, gameType.getValue()); // game type
-                    wrapper.user().get(EntityTracker.class).getClientPlayer().setGameType(gameType);
                 });
-                handler(CLIENT_PLAYER_GAME_MODE_INFO_UPDATE);
-                handler(CLIENT_PLAYER_GAME_MODE_UPDATE);
             }
         });
         protocol.registerServerbound(ServerboundPackets26_3.PUNCH, ServerboundBedrockPackets.ANIMATE, wrapper -> {
@@ -664,6 +686,13 @@ public final class ClientPlayerPackets {
                 clientPlayer.addAuthInputData(PlayerAuthInputData.MissedSwing);
             }
         });
+    }
+
+    private static void writeFlightAbilityRequest(final PacketWrapper wrapper, final boolean flying) {
+        wrapper.write(BedrockTypes.VAR_INT, AbilitiesIndex.Flying.getValue()); // ability
+        wrapper.write(Types.UNSIGNED_BYTE, (short) 1); // boolean value type
+        wrapper.write(Types.BOOLEAN, flying); // boolean value
+        wrapper.write(BedrockTypes.FLOAT_LE, 0F); // unused float value is required on the wire
     }
 
     private ClientPlayerPackets() {

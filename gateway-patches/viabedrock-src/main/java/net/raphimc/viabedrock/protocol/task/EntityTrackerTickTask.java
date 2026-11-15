@@ -20,6 +20,7 @@ package net.raphimc.viabedrock.protocol.task;
 import com.viaversion.viaversion.api.Via;
 import com.viaversion.viaversion.api.connection.UserConnection;
 import net.raphimc.viabedrock.protocol.BedrockProtocol;
+import net.raphimc.viabedrock.protocol.MpmcPipelineDiagnostics;
 import net.raphimc.viabedrock.protocol.storage.EntityTracker;
 
 public class EntityTrackerTickTask implements Runnable {
@@ -29,15 +30,19 @@ public class EntityTrackerTickTask implements Runnable {
         for (UserConnection info : Via.getManager().getConnectionManager().getConnections()) {
             final EntityTracker entityTracker = info.get(EntityTracker.class);
             if (entityTracker != null) {
+                final long queuedAt = MpmcPipelineDiagnostics.timingNow();
                 info.getChannel().eventLoop().submit(() -> {
                     if (!info.getChannel().isActive()) {
                         return;
                     }
 
+                    final long startedAt = MpmcPipelineDiagnostics.timingNow();
                     try {
                         entityTracker.tick();
                     } catch (final Throwable e) {
                         BedrockProtocol.kickForIllegalState(info, "Error ticking entity tracker. See console for details.", e);
+                    } finally {
+                        MpmcPipelineDiagnostics.recordTask(info, false, queuedAt, startedAt);
                     }
                 });
             }

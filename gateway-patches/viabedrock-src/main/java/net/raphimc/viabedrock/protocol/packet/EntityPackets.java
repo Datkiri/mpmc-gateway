@@ -272,7 +272,7 @@ public final class EntityPackets {
                     return;
                 }
 
-                entity.setPosition(new Position3f(x, y, z));
+                entity.updatePosition(hasX, x, hasY, y, hasZ, z);
 
                 if (teleported) {
                     wrapper.setPacketType(ClientboundPackets26_3.PLAYER_POSITION);
@@ -292,15 +292,7 @@ public final class EntityPackets {
                 return;
             }
 
-            if (hasX) {
-                entity.setPosition(new Position3f(x, entity.position().y(), entity.position().z()));
-            }
-            if (hasY) {
-                entity.setPosition(new Position3f(entity.position().x(), y, entity.position().z()));
-            }
-            if (hasZ) {
-                entity.setPosition(new Position3f(entity.position().x(), entity.position().y(), z));
-            }
+            entity.updatePosition(hasX, x, hasY, y, hasZ, z);
             if (hasPitch) {
                 entity.setRotation(new Position3f(MathUtil.byte2Float(pitch), entity.rotation().y(), entity.rotation().z()));
             }

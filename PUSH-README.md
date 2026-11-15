@@ -8,7 +8,7 @@ lưu toàn bộ trạng thái công việc gateway hai chiều sau khi repo côn
 
 | # | Chiều | Chuỗi | Trạng thái đo được |
 |---|---|---|---|
-| 1 | **Java → Bedrock** | client Java 1.21.1 GUI / mineflayer → `ViaProxy + ViaBedrock mpmc.18` (`127.0.0.1:25569/25570`) → BDS 1.26.51 (proto 2193, RakNet UDP 19132) | Dịch packet có kiểm kê: 169 clientbound / 69 serverbound đều có disposition; audit `.18` 44.164 dòng, PRE = POST+CANCEL+DEFERRED, 0 ERROR/unmapped/NPE/kick, creative 50 accept / 0 reject, `INTERACT toHost=11`, `USE_ITEM_ON seq=1..80`; `gateway verify` VERIFY_EXIT=0. Source agent M0–M6 + `gateway-patches/`. |
+| 1 | **Java → Bedrock** | Java 1.21.1 / 1.21.4 → `ViaProxy + ViaBedrock mpmc.19` (`127.0.0.1:25608`) → BDS 1.26.51 (proto 2193, UDP 19152) | Host xác nhận flight start/stop; inventory 66 accept / 0 reject; pin/đóng gói đã kiểm tra. Movement còn FAIL và packet semantics chưa đầy đủ; xem kết quả .19 bên dưới. Source agent M0–M6 + `gateway-patches/`. |
 | 2 | **Bedrock → Java** (không Xbox) | client Bedrock LAN self-signed → `xvrelay -listen-nethernet` (broadcast `.255`) → Geyser 2.12.1 → ViaProxy → Java 1.21.11 | Join + chat thật: Java server `LANJoinerFinal joined the game` + `[Not Secure] <LANJoinerFinal> hello-from-LAN-offline`; wire capture 16+16 `ResponsePacket` tới `.255`, `ServerData` `AcceptsOnlineAuth=false` / `AcceptsSelfSignedAuth=true`; `clientclone` 12/12 assertion, 2168/2169/2193/2225 `ok=true`. Source/config: `reverse/`, `lan255/`, `docs/M6-BEDROCK.md §10`, branch `xver-relay`. |
 
 Cả hai chiều đều **đo bằng log/packet capture thật**, không chỉ compile success.
@@ -20,9 +20,9 @@ Repo gồm 2 nhánh: `main` = snapshot/docs/bằng chứng, `xver-relay` = lịc
 | Đường dẫn | Ý nghĩa |
 |---|---|
 | `agent-core/`, `agent-cli/`, `coordinator/`, `protocol/`, `relay/`, `transport-iroh/`, `it/`, `packaging/`, `plugins/`, `m0-spike/`, `gradle/` | Source Kotlin/Java của agent M0–M6 |
-| `docs/` | `M6-BEDROCK.md` (§0 + §10.7, 1266 dòng), `M6-PACKET-INVENTORY.md` (bản .18), và docs M1–M5, RUNBOOK, MEASUREMENTS |
+| `docs/` | `M6-BEDROCK.md` (kết quả .19 ở §11), `M6-PACKET-INVENTORY.md` (phân loại giới hạn hiện tại), và docs M1–M5, RUNBOOK, MEASUREMENTS |
 | `_m5/`, `_m6/` | Probe CLI, script audit, script inventory, build log text, `build-push-snapshot.py` |
-| `gateway-patches/viabedrock-src/` | Toàn bộ source Java đã patch của ViaBedrock mpmc.18 |
+| `gateway-patches/viabedrock-src/` | Toàn bộ source Java đã patch của ViaBedrock mpmc.19 |
 | `gateway-patches/*.patch` | Diff so với base upstream, `git apply` được |
 | `lan255/` | Bằng chứng wire-level broadcast `.255` (`lan255-capture.txt`) + diff `xver-lan255.patch` (`e3bb416..59b350a`) |
 | `reverse/` | Config Geyser + 3 script `clientclone` + `run-reverse.txt` (lệnh tái dựng chiều Bedrock → Java) |
@@ -30,11 +30,23 @@ Repo gồm 2 nhánh: `main` = snapshot/docs/bằng chứng, `xver-relay` = lịc
 Không đưa vào repo: fat jar, build output, BDS binary, `node_modules`, log runtime,
 `session.json`, `saves.json`, file token. Repo chỉ chứa source/text.
 
-## Pin phát hành
+## Pin phát hành .19
 
-- `PATCHED_VERSION = 3.4.14-mpmc.18`
-- `PATCHED_SHA256 = bdeab29f84e9bfa81714da15da49e611438d04e71aa93d088ec0854bdf4f78f8`
-- `gateway verify`: `VERIFY_EXIT=0`; zip `mpmc-agent-0.1.0.zip` không chứa `ViaProxy-*.jar`.
+- `PATCHED_VERSION = 3.4.14-mpmc.19`, ViaBedrock `0.0.31-mpmc.19`.
+- `PATCHED_SHA256 = 7a692652e8116e0a07e2e06082a0ccbade5d638770c730bf6cb0ef64588c02db`.
+- Bản build chính thức: 48.880.081 byte, 20.113 entry duy nhất; `gateway verify` exit 0.
+- Agent: 8 test PASS; ZIP 62 entry, không chứa ViaProxy/ViaBedrock. SHA256 ZIP: `913f542b90789b4a46b75b5195dff9610d053067340f4c20eb35c0fa7ecbf2ca`.
+- Sửa flight bằng RequestAbility đúng wire schema, giữ quyền MayFly từ host; sửa transition sprint/flight, collision-only movement, entity delta/flags/passengers, inventory response identity và hàng đợi chunk maintenance.
+- BDS thật xác nhận start/stop flight và hạ cánh cho Java 1.21.1/1.21.4. Inventory: 66 accepted, 0 rejected, 4 thao tác offhand được lọc cục bộ.
+- **Cả hai movement probe vẫn FAIL**: 1.21.4 có correction +0,5353 block lúc chuyển sang hold; 1.21.1 có idle drift 0,6055 block và synthetic ascent chưa đạt ngưỡng. Stable hold cuối đạt 0 drift ở cả hai phiên bản. Không coi đây là đã hết khựng.
+- Audit: 3.808 PRE = 1.481 POST + 2.317 CANCEL + 10 DEFERRED; 1.136 POST toHost, 0 lỗi audit phát hiện. Đây là kiểm kê packet quan sát được, **không phải dịch đủ ngữ nghĩa 100%**. Còn 9 nhóm clientbound JAVA_UNMAPPED và các serverbound chưa triển khai; xem `docs/M6-PACKET-INVENTORY.md`.
+- Bằng chứng gốc giữ FAIL: `_m5/client/movement-flight-release19-1211.jsonl`, `movement-flight-release19-1214.jsonl`; metadata đi kèm được tạo sau lần chạy.
+
+### Tái dựng patch .19
+
+`gateway-patches/viabedrock-mpmc19.patch` là patch tích lũy từ ViaBedrock `3756cc0`, gồm cả 6 source regression mới. `viaproxy-mpmc19.patch` áp dụng từ ViaProxy `1cc5364`. Dùng `git apply` trên checkout sạch của đúng base, không áp thêm patch .18. Build ViaBedrock bằng `publishToMavenLocal`, sau đó ViaProxy bằng `jar` (fat JAR). Đặt Maven local/Gradle cache/TEMP trên D; đường dẫn Maven local trong patch cần đổi nếu checkout ở vị trí khác. `gateway-patches/viabedrock-src/` phản ánh source .19; patch .18 được giữ làm lịch sử.
+
+`_m6/build-push-snapshot.py` là script bootstrap snapshot .18 lịch sử, từ chối chạy khi thư mục đích đã tồn tại; không dùng script đó để cập nhật bản .19. Chi tiết kiểm chứng và giới hạn: `docs/M6-BEDROCK.md §11`.
 
 ## Regression động .18 (đã đo, `vp-audit18-reg.log`)
 

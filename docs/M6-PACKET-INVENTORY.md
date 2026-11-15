@@ -908,10 +908,10 @@ mappings, **đã xác minh** bằng dữ liệu). Việc gọi đó là "counter
 |---:|---|---|---|---|---|
 | 51 | CONTAINER_SET_DATA | PRE=0 | `craft_progress_bar` (`0x14` 1.21.1 / `0x13` 1.21.6) | cần ánh xạ container id + property index (fuel/progress/enchant level…) | ID đã xác minh; counterpart suy luận; wire **[Chưa kiểm chứng]** |
 | 52 | CRAFTING_DATA | **PRE=1**, 1 042 769 B, `CLASSIFIED` ×1 | `declare_recipes` (`0x77` / `0x7e`) | Bedrock gửi toàn bộ bảng recipe; cần registry recipe type + item id 2 chiều | **Đã xác minh** id/bytes/classified; counterpart suy luận |
-| 66 | SPAWN_EXPERIENCE_ORB | PRE=0 | `spawn_entity_experience_orb` (`0x02`, **chỉ 1.21.1**; 1.21.6 gộp vào `spawn_entity`) | cần entity runtime id → Java entity id + unique id | ID đã xác minh; wire **[Chưa kiểm chứng]** |
+| 66 | SPAWN_EXPERIENCE_ORB | PRE=0 | `spawn_entity_experience_orb` (`0x02`, **chỉ 1.21.1**; 1.21.6 gộp vào `spawn_entity`) | Correction from local Bedrock 1.26.51 `protocol.json`: payload is `position: vec3f`, `count: zigzag32`, with **no source entity ID**. Translation remains unimplemented; it needs synthetic Java entity identity and lifecycle handling. | ID đã xác minh; schema verified statically; wire **[Chưa kiểm chứng]** |
 | 67 | MAP_ITEM_DATA | PRE=0 | `map` (`0x2c` cả 2 bản) | schema map id / icon / decoration khác nhau | ID đã xác minh; wire **[Chưa kiểm chứng]** |
 | 80 | UPDATE_TRADE | PRE=0 | `trade_list` (`0x2d` cả 2 bản) | cần item + villager entity id + recipe id | ID đã xác minh; wire **[Chưa kiểm chứng]** |
-| 81 | UPDATE_EQUIP | PRE=0 | `entity_equipment` (`0x5b` / `0x5f`) | cần entity runtime id → Java entity id + equipment slot enum | ID đã xác minh; wire **[Chưa kiểm chứng]** |
+| 81 | UPDATE_EQUIP | PRE=0 | Horse inventory UI metadata; the earlier `entity_equipment` counterpart inference was incorrect. | Local Bedrock 1.26.51 schema: window ID/type, size, entity unique ID and inventory NBT. Translation remains unimplemented and needs horse-container/slot/NBT support. Ordinary equipment is handled separately by `MOB_EQUIPMENT` / `MOB_ARMOR_EQUIPMENT`. | ID đã xác minh; schema verified statically; wire **[Chưa kiểm chứng]** |
 | 176 | PLAYER_START_ITEM_COOLDOWN | PRE=0 | `set_cooldown` (`0x17` / `0x16`) | cần item identifier → Java item id + cooldown group | ID đã xác minh; wire **[Chưa kiểm chứng]** |
 | 199 | UNLOCKED_RECIPES | **PRE=2**, 656..662 B, `CLASSIFIED` ×2 | `unlock_recipes` (`0x41`, 1.21.1) → 1.21.6 thay bằng `recipe_book_add/remove/settings` (`0x43/0x44/0x45`) | khác biệt schema theo version + recipe id mapping | **Đã xác minh** id/bytes/classified; counterpart suy luận |
 | 302 | TRIM_DATA | **PRE=1**, 1269 B, `CLASSIFIED` ×1 | registry `minecraft:trim_pattern` / `trim_material` qua `registry_data` | cần ánh xạ registry entry, không phải packet riêng | **Đã xác minh** id/bytes/classified; counterpart suy luận |
@@ -1066,3 +1066,32 @@ raw-frame proxy `:25574 → :25570`: 12.026 frame capture trong `raw18-gui.log`,
 **26 `Bedrock accepted` / 0 `Bedrock rejected`**, 0 exception, 0 `UPDATE_TRADE`.
 `status 6/60` **chưa tái hiện** trên `.18`, nhưng vì trigger gốc (tương tác entity/trade)
 chưa xảy ra trong phiên này nên vẫn xếp **[Chưa xác minh]**, không đổi kết luận §9.1.
+
+## 10. Current source changes — classification accuracy (2026-11-15)
+
+This section describes the current working source, not a new runtime audit or a released jar.
+The historical `.14`–`.18` packet counts, observations and disposition tables above remain
+historical evidence; they do not establish complete semantic support in the current source.
+
+`BedrockProtocol.classifyServerbound()` now distinguishes these unsupported cases:
+
+| Java serverbound packet | Current disposition | Actual behavior |
+|---|---|---|
+| `EDIT_BOOK` | `bedrock-counterpart-unimplemented` | Cancelled; no book-edit translator implemented |
+| `SET_COMMAND_BLOCK` | `bedrock-counterpart-unimplemented` | Cancelled; no command-block update translator implemented |
+| `SET_COMMAND_MINECART` | `bedrock-counterpart-unimplemented` | Cancelled; no command-minecart update translator implemented |
+| `CONTAINER_SLOT_STATE_CHANGED` | `bedrock-counterpart-unimplemented` | Cancelled; crafter slot-toggle translation remains unimplemented |
+| Any other Java packet reaching this classification method | `unsupported-unclassified` | Cancelled; lack of a Bedrock counterpart has not been established |
+
+These handlers still call `wrapper.cancel()`; the changed reason strings improve audit
+accuracy and do not add gameplay support. Explicit intentional cancellations in
+`UnhandledPackets` remain distinct from these unimplemented translations. Registered
+translation handlers must also be assessed by their supported actions/subtypes: registration
+alone does not mean that every payload is translated. In particular, `CONTAINER_OPEN` still
+rejects unsupported workstation/container types, so a crafter slot-toggle handler alone
+would not provide complete crafter support.
+
+The nine Bedrock clientbound `java-counterpart-unmapped` entries remain unimplemented.
+The earlier wording that all 77 nontranslated clientbound types have no Java counterpart
+is incorrect: the historical 77 count includes those nine known counterpart gaps. No new
+full-coverage, runtime, build or release claim is made by this documentation update.

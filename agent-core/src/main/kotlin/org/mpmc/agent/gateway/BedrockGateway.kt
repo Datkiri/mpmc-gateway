@@ -27,7 +27,7 @@ object ViaProxyRelease {
     const val SHA256 = "2894bbfb2f4342f8fde887af6c689313efd5b0e46a8006775eea0e21e2948ab5"
 
     /**
-     * Bản build cục bộ của mpmc: ViaProxy 3.4.14 + ViaBedrock 0.0.31-mpmc.18 (GPL-3.0), giữ ngoài
+     * Bản build cục bộ của mpmc: ViaProxy 3.4.14 + ViaBedrock 0.0.31-mpmc.19 (GPL-3.0), giữ ngoài
      * gói phát hành. Bản này bổ sung creative inventory qua ItemStackRequest, đặt/đào block qua
      * transaction nhúng trong PlayerAuthInput (Bedrock 1.26.40+), slot ARMOR Body, packet
      * locator_bar (341), layout RESPAWN khi CHANGE_DIMENSION, replay packet clientbound
@@ -49,8 +49,8 @@ object ViaProxyRelease {
      * huỷ bằng bản sinh click-position zero, và null-guard EntityTracker.getEntityByJid()
      * để click entity không tồn tại không còn NPE kick cả phiên.
      */
-    const val PATCHED_VERSION = "3.4.14-mpmc.18"
-    const val PATCHED_SHA256 = "bdeab29f84e9bfa81714da15da49e611438d04e71aa93d088ec0854bdf4f78f8"
+    const val PATCHED_VERSION = "3.4.14-mpmc.19"
+    const val PATCHED_SHA256 = "7a692652e8116e0a07e2e06082a0ccbade5d638770c730bf6cb0ef64588c02db"
 
     const val DEFAULT_TARGET_VERSION = "Bedrock 1.26.51"
     const val DEFAULT_GATEWAY_BIND = "127.0.0.1:25568"

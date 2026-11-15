@@ -160,54 +160,58 @@ public class ClientPlayerEntity extends PlayerEntity {
 
     public void updatePlayerPosition(final short flags) {
         final boolean newOnGround = (flags & MovePlayerFlag.ON_GROUND.getBit()) != 0;
+        final boolean newHorizontalCollision = (flags & MovePlayerFlag.HORIZONTAL_COLLISION.getBit()) != 0;
 
-        if (!this.preMove(null, null, newOnGround)) {
+        if (!this.preMove(null, null, newOnGround, newHorizontalCollision)) {
             return;
         }
 
         this.onGround = newOnGround;
-        this.horizontalCollision = (flags & MovePlayerFlag.HORIZONTAL_COLLISION.getBit()) != 0;
+        this.horizontalCollision = newHorizontalCollision;
     }
 
     public void updatePlayerPosition(final double x, final double y, final double z, final short flags) {
         final Position3f newPosition = new Position3f((float) x, (float) y + this.eyeOffset(), (float) z);
         final boolean newOnGround = (flags & MovePlayerFlag.ON_GROUND.getBit()) != 0;
+        final boolean newHorizontalCollision = (flags & MovePlayerFlag.HORIZONTAL_COLLISION.getBit()) != 0;
 
-        if (!this.preMove(newPosition, null, newOnGround)) {
+        if (!this.preMove(newPosition, null, newOnGround, newHorizontalCollision)) {
             return;
         }
 
         this.position = newPosition;
         this.onGround = newOnGround;
-        this.horizontalCollision = (flags & MovePlayerFlag.HORIZONTAL_COLLISION.getBit()) != 0;
+        this.horizontalCollision = newHorizontalCollision;
     }
 
     public void updatePlayerPosition(final double x, final double y, final double z, final float yaw, final float pitch, final short flags) {
         final Position3f newPosition = new Position3f((float) x, (float) y + this.eyeOffset(), (float) z);
         final Position3f newRotation = new Position3f(pitch, yaw, yaw);
         final boolean newOnGround = (flags & MovePlayerFlag.ON_GROUND.getBit()) != 0;
+        final boolean newHorizontalCollision = (flags & MovePlayerFlag.HORIZONTAL_COLLISION.getBit()) != 0;
 
-        if (!this.preMove(newPosition, newRotation, newOnGround)) {
+        if (!this.preMove(newPosition, newRotation, newOnGround, newHorizontalCollision)) {
             return;
         }
 
         this.position = newPosition;
         this.rotation = newRotation;
         this.onGround = newOnGround;
-        this.horizontalCollision = (flags & MovePlayerFlag.HORIZONTAL_COLLISION.getBit()) != 0;
+        this.horizontalCollision = newHorizontalCollision;
     }
 
     public void updatePlayerPosition(final float yaw, final float pitch, final short flags) {
         final Position3f newRotation = new Position3f(pitch, yaw, yaw);
         final boolean newOnGround = (flags & MovePlayerFlag.ON_GROUND.getBit()) != 0;
+        final boolean newHorizontalCollision = (flags & MovePlayerFlag.HORIZONTAL_COLLISION.getBit()) != 0;
 
-        if (!this.preMove(null, newRotation, newOnGround)) {
+        if (!this.preMove(null, newRotation, newOnGround, newHorizontalCollision)) {
             return;
         }
 
         this.rotation = newRotation;
         this.onGround = newOnGround;
-        this.horizontalCollision = (flags & MovePlayerFlag.HORIZONTAL_COLLISION.getBit()) != 0;
+        this.horizontalCollision = newHorizontalCollision;
     }
 
     public void confirmTeleport(final int teleportId) {
@@ -243,6 +247,21 @@ public class ClientPlayerEntity extends PlayerEntity {
 
     public void addAuthInputData(final PlayerAuthInputData... data) {
         this.authInputData.addAll(Arrays.asList(data));
+    }
+
+    public boolean canRequestFlight(final boolean flying) {
+        return !flying || this.abilities.getBooleanValue(AbilitiesIndex.MayFly);
+    }
+
+    public void queueFlightTransition(final boolean flying) {
+        this.authInputData.remove(flying ? PlayerAuthInputData.StopFlying : PlayerAuthInputData.StartFlying);
+        this.authInputData.add(flying ? PlayerAuthInputData.StartFlying : PlayerAuthInputData.StopFlying);
+    }
+
+    public void reconcileFlightTransition() {
+        if (!this.abilities.getBooleanValue(AbilitiesIndex.MayFly)) {
+            this.authInputData.remove(PlayerAuthInputData.StartFlying);
+        }
     }
 
     public List<AuthInputBlockAction> authInputBlockActions() {
@@ -487,7 +506,7 @@ public class ClientPlayerEntity extends PlayerEntity {
         };
     }
 
-    private boolean preMove(final Position3f newPosition, final Position3f newRotation, final boolean newOnGround) {
+    private boolean preMove(final Position3f newPosition, final Position3f newRotation, final boolean newOnGround, final boolean newHorizontalCollision) {
         final ChunkTracker chunkTracker = this.user.get(ChunkTracker.class);
 
         // Allow position packet which is sent immediately after confirming a teleport
@@ -531,7 +550,7 @@ public class ClientPlayerEntity extends PlayerEntity {
             return true;
         } else if (newRotation != null && !this.rotation.equals(newRotation)) {
             return true;
-        } else if (this.onGround != newOnGround) {
+        } else if (this.onGround != newOnGround || this.horizontalCollision != newHorizontalCollision) {
             return true;
         }
 

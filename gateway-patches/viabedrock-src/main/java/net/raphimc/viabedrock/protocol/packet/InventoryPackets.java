@@ -95,6 +95,7 @@ public final class InventoryPackets {
     // .13-exp diagnostics: all of them are disabled (empty property / "full" mode) in production builds.
     private static final String CONTROL_PATH = System.getProperty("mpmc.req.control", "");
     private static final String CREATIVE_DUMP = System.getProperty("mpmc.creative.dump", "");
+    private static final boolean REJECTION_CONTEXT = Boolean.getBoolean("mpmc.inventory.rejectionContext");
     private static final java.util.Map<Integer, String> REQ_INFO = new java.util.concurrent.ConcurrentHashMap<>();
 
     // Measured on live BDS 1.26.51 (protocol 2193) across 78 creative-slot cases
@@ -706,6 +707,20 @@ public final class InventoryPackets {
                 }
 
                 if (status != 0) {
+                    if (REJECTION_CONTEXT) {
+                        final Container current = inventoryTracker.getCurrentContainer();
+                        final Container closing = inventoryTracker.getPendingCloseContainer();
+                        final var player = wrapper.user().get(EntityTracker.class).getClientPlayer();
+                        final var deferred = pending == null ? null : inventoryTracker.getDeferredCreativeSlots().get(creativeSlotKey(pending.container(), pending.slot()));
+                        ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "[INVENTORY_REJECTION_CONTEXT] request=" + requestId
+                                + " status=" + status
+                                + " target=" + (pending == null ? "unknown" : pending.container() + "/" + pending.slot())
+                                + " current=" + (current == null ? "none" : current.type() + "/" + current.containerId())
+                                + " pendingClose=" + (closing == null ? "none" : closing.type() + "/" + closing.containerId())
+                                + " javaGameMode=" + player.javaGameMode() + " bedrockGameType=" + player.gameType()
+                                + " inFlight=" + inventoryTracker.getInFlightCreativeSlots().size()
+                                + " deferred=" + (deferred == null ? 0 : deferred.size()));
+                    }
                     ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "Bedrock rejected item stack request " + requestId + " (status " + status + " = " + ItemStackNetResult.getByValue(status, ItemStackNetResult.Error) + ") cfg=" + REQ_INFO.remove(requestId));
                     if (pending != null) {
                         restoreCreativeSlot(wrapper.user(), inventoryTracker, pending);
@@ -1287,10 +1302,13 @@ public final class InventoryPackets {
             return;
         }
 
-        BedrockItem item = container.getItem(targetSlot);
-        if (item.isEmpty() && pending != null) {
-            item = pending.newItem();
-        }
+        final boolean pendingTarget = pending != null && pending.slot() == targetSlot
+                && (pending.container() == containerName
+                || (pending.container() == ContainerEnumName.CombinedHotbarAndInventoryContainer
+                && (containerName == ContainerEnumName.HotbarContainer || containerName == ContainerEnumName.InventoryContainer)));
+        // A queued creative click may already have replaced the optimistic tracker item.
+        // Only the acknowledged target can take its identity from this request's snapshot.
+        final BedrockItem item = pendingTarget ? pending.newItem() : container.getItem(targetSlot);
         if (item.isEmpty()) {
             return;
         }

@@ -1,0 +1,42 @@
+{
+  "metadataType": "post_run_artifact_association",
+  "artifactSha256": "7a692652e8116e0a07e2e06082a0ccbade5d638770c730bf6cb0ef64588c02db",
+  "artifactEvidence": "Official gateway artifact hash supplied by team-lead for port 25608; test client cannot independently hash remote executable",
+  "endpoint": "127.0.0.1:25608",
+  "bedrockEndpoint": "127.0.0.1:19152",
+  "runs": [
+    {
+      "version": "1.21.4",
+      "username": "M19Release214",
+      "taskId": "jyYH4S",
+      "output": "movement-flight-release19-1214.jsonl",
+      "exitCode": 1,
+      "status": "FAIL",
+      "initialHoldDrift": 0.5353195190429574,
+      "stableHoldDurationMs": 2041,
+      "stableHoldDrift": 0,
+      "activeSprintSpeedRatio": 1.3007003529814813,
+      "flightAuthorityAndStop": "host-confirmed"
+    },
+    {
+      "version": "1.21.1",
+      "username": "M19Release211",
+      "taskId": "9JPxWw",
+      "output": "movement-flight-release19-1211.jsonl",
+      "exitCode": 1,
+      "status": "FAIL",
+      "initialHoldDrift": 0,
+      "stableHoldDurationMs": 2060,
+      "stableHoldDrift": 0,
+      "activeSprintSpeedRatio": 1.2856927553923458,
+      "idleDriftFailure": 0.6054840087890625,
+      "syntheticAscent": 1.0691909790039062,
+      "flightAuthorityAndStop": "host-confirmed"
+    }
+  ],
+  "limitations": [
+    "Synthetic flight movement is not a validated natural creative-flight integrator.",
+    "Original raw JSONL results remain unchanged and FAIL; this metadata was recorded after runs.",
+    "Server-authorized flight and stable-tail success do not override transition or synchronization failures."
+  ]
+}

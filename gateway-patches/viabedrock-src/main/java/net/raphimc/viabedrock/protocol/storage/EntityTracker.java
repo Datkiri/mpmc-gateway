@@ -75,17 +75,17 @@ public class EntityTracker extends StoredObject {
     }
 
     public <T extends Entity> T addEntity(final T entity, final boolean updateTeam) {
-        if (entity instanceof ClientPlayerEntity playerEntity) {
-            this.clientPlayerEntity = playerEntity;
-        }
-
-        final Entity prevEntity = this.entities.put(entity.uniqueId(), entity);
+        final Entity prevEntity = this.entities.get(entity.uniqueId());
         if (prevEntity != null) {
             ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "Duplicate entity unique ID: " + entity.uniqueId());
             this.removeEntity(prevEntity);
             final PacketWrapper removeEntities = PacketWrapper.create(ClientboundPackets26_3.REMOVE_ENTITIES, this.user());
             removeEntities.write(Types.VAR_INT_ARRAY_PRIMITIVE, new int[]{prevEntity.javaId()}); // entity ids
             removeEntities.send(BedrockProtocol.class);
+        }
+        this.entities.put(entity.uniqueId(), entity);
+        if (entity instanceof ClientPlayerEntity playerEntity) {
+            this.clientPlayerEntity = playerEntity;
         }
         if (this.javaIdToUniqueId.put(entity.javaId(), (Long) entity.uniqueId()) != null) {
             ViaBedrock.getPlatform().getLogger().log(Level.WARNING, "Duplicate Java entity ID: " + entity.javaId());
@@ -140,7 +140,7 @@ public class EntityTracker extends StoredObject {
     public void removeItemFrame(final BlockPosition position) {
         if (this.itemFrames.containsKey(position)) {
             final PacketWrapper removeEntities = PacketWrapper.create(ClientboundPackets26_3.REMOVE_ENTITIES, this.user());
-            removeEntities.write(Types.VAR_INT_ARRAY_PRIMITIVE, new int[]{this.itemFrames.getInt(position)}); // entity ids
+            removeEntities.write(Types.VAR_INT_ARRAY_PRIMITIVE, new int[]{this.itemFrames.removeInt(position)}); // entity ids
             removeEntities.send(BedrockProtocol.class);
         }
     }

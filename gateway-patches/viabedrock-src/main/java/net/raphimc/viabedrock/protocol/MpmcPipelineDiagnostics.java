@@ -29,6 +29,7 @@ import com.viaversion.viaversion.exception.CancelException;
 import com.viaversion.viaversion.exception.InformativeException;
 import com.viaversion.viaversion.protocols.v26_2to26_3.packet.ClientboundPackets26_3;
 import com.viaversion.viaversion.protocols.v26_2to26_3.packet.ServerboundPackets26_3;
+import io.netty.util.AttributeKey;
 import net.raphimc.viabedrock.ViaBedrock;
 
 import java.lang.reflect.Field;
@@ -38,6 +39,10 @@ import java.util.logging.Level;
 
 /**
  * Default-off diagnostic, enabled with {@code -Dmpmc.debug.pipeline=true}.
+ *
+ * <p>Independent {@code -Dmpmc.debug.timing=true} aggregates event-loop queue delay,
+ * task runtime and auth-input serialization intervals. Reports are emitted on auth-input
+ * activity at most once every five seconds; serialization timing is not wire-send timing.</p>
  *
  * <p>{@code PacketWrapperImpl.apply()} walks the serverbound protocol list and calls
  * {@code Protocol.transform()} on each element. A handler that calls {@code wrapper.cancel()}
@@ -62,6 +67,113 @@ public final class MpmcPipelineDiagnostics {
 
     private static final boolean ENABLED = Boolean.getBoolean("mpmc.debug.pipeline");
     private static volatile boolean debugHandlerEnabled;
+    private static final boolean TIMING_ENABLED = Boolean.getBoolean("mpmc.debug.timing");
+    private static final AttributeKey<TimingWindow> TIMING = AttributeKey.valueOf("viabedrock-timing-window");
+
+    public static long timingNow() {
+        return TIMING_ENABLED ? System.nanoTime() : 0L;
+    }
+
+    public static void recordTask(final UserConnection user, final boolean chunk, final long queuedAt, final long startedAt) {
+        if (TIMING_ENABLED) {
+            timingWindow(user).task(chunk, startedAt - queuedAt, System.nanoTime() - startedAt);
+        }
+    }
+
+    public static void recordAuthInput(final UserConnection user) {
+        if (!TIMING_ENABLED) {
+            return;
+        }
+        final long now = System.nanoTime();
+        final TimingWindow window = timingWindow(user);
+        window.authInput(now);
+        if (window.ready(now)) {
+            ViaBedrock.getPlatform().getLogger().info(window.report(now));
+            window.reset(now);
+        }
+    }
+
+    private static TimingWindow timingWindow(final UserConnection user) {
+        TimingWindow window = user.getChannel().attr(TIMING).get();
+        if (window == null) {
+            window = new TimingWindow(System.nanoTime());
+            user.getChannel().attr(TIMING).set(window);
+        }
+        return window;
+    }
+
+    // Accessed only on the connection event loop; reports contain no packet or identity data.
+    static final class TimingWindow {
+        private long windowStart;
+        private long previousAuth;
+        private boolean hasPreviousAuth;
+        private long authCount;
+        private long intervalCount;
+        private long intervalTotal;
+        private long intervalMax;
+        private long authGaps;
+        private final long[] taskCount = new long[2];
+        private final long[] queueMax = new long[2];
+        private final long[] runtimeMax = new long[2];
+
+        TimingWindow(final long now) {
+            this.windowStart = now;
+        }
+
+        void task(final boolean chunk, final long queueNanos, final long runtimeNanos) {
+            final int index = chunk ? 0 : 1;
+            this.taskCount[index]++;
+            this.queueMax[index] = Math.max(this.queueMax[index], queueNanos);
+            this.runtimeMax[index] = Math.max(this.runtimeMax[index], runtimeNanos);
+        }
+
+        void authInput(final long now) {
+            this.authCount++;
+            if (this.hasPreviousAuth) {
+                final long interval = now - this.previousAuth;
+                this.intervalCount++;
+                this.intervalTotal += interval;
+                this.intervalMax = Math.max(this.intervalMax, interval);
+                if (interval > 100_000_000L) {
+                    this.authGaps++;
+                }
+            }
+            this.previousAuth = now;
+            this.hasPreviousAuth = true;
+        }
+
+        boolean ready(final long now) {
+            return now - this.windowStart >= 5_000_000_000L;
+        }
+
+        String report(final long now) {
+            return "[TIMING] windowMs=" + (now - this.windowStart) / 1_000_000L
+                    + " authSerialized=" + this.authCount
+                    + " authIntervalAvgUs=" + (this.intervalCount == 0 ? 0 : this.intervalTotal / this.intervalCount / 1_000L)
+                    + " authIntervalMaxUs=" + this.intervalMax / 1_000L
+                    + " authGapsOver100ms=" + this.authGaps
+                    + " chunkTicks=" + this.taskCount[0]
+                    + " chunkQueueMaxUs=" + this.queueMax[0] / 1_000L
+                    + " chunkRuntimeMaxUs=" + this.runtimeMax[0] / 1_000L
+                    + " entityTicks=" + this.taskCount[1]
+                    + " entityQueueMaxUs=" + this.queueMax[1] / 1_000L
+                    + " entityRuntimeMaxUs=" + this.runtimeMax[1] / 1_000L;
+        }
+
+        void reset(final long now) {
+            this.windowStart = now;
+            this.authCount = 0;
+            this.intervalCount = 0;
+            this.intervalTotal = 0;
+            this.intervalMax = 0;
+            this.authGaps = 0;
+            for (int i = 0; i < this.taskCount.length; i++) {
+                this.taskCount[i] = 0;
+                this.queueMax[i] = 0;
+                this.runtimeMax[i] = 0;
+            }
+        }
+    }
 
     private MpmcPipelineDiagnostics() {
     }

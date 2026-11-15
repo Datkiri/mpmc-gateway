@@ -245,10 +245,14 @@ public class BedrockProtocol extends StatelessTransitionProtocol<ClientboundBedr
     }
 
     private void classifyServerbound(final ServerboundPackets26_3 packet) {
+        final String reason = switch (packet) {
+            case EDIT_BOOK, SET_COMMAND_BLOCK, SET_COMMAND_MINECART, CONTAINER_SLOT_STATE_CHANGED -> "bedrock-counterpart-unimplemented";
+            default -> "unsupported-unclassified";
+        };
         this.registerServerbound(packet, null, wrapper -> {
             if (AUDIT) {
                 ViaBedrock.getPlatform().getLogger().info("[AUDIT] CLASSIFIED dir=SERVERBOUND id="
-                    + packet.getId() + " name=" + packet.name() + " reason=no-bedrock-counterpart");
+                    + packet.getId() + " name=" + packet.name() + " reason=" + reason);
             }
             wrapper.cancel();
         });

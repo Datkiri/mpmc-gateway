@@ -36,6 +36,7 @@ import net.raphimc.viabedrock.api.util.PacketFactory;
 import net.raphimc.viabedrock.api.util.StringUtil;
 import net.raphimc.viabedrock.protocol.BedrockProtocol;
 import net.raphimc.viabedrock.protocol.ClientboundBedrockPackets;
+import net.raphimc.viabedrock.protocol.data.enums.bedrock.AbilitiesIndex;
 import net.raphimc.viabedrock.protocol.data.enums.bedrock.generated.GameType;
 import net.raphimc.viabedrock.protocol.data.enums.bedrock.generated.PositionMode;
 import net.raphimc.viabedrock.protocol.data.enums.java.Relative;
@@ -99,7 +100,7 @@ public final class OtherPlayerPackets {
             wrapper.write(Types.UUID, uuid); // uuid
             wrapper.write(Types.VAR_INT, EntityTypes26_3.PLAYER.getId()); // type id
             wrapper.write(Types.DOUBLE, (double) position.x()); // x
-            wrapper.write(Types.DOUBLE, (double) position.y()); // y
+            wrapper.write(Types.DOUBLE, (double) position.y() - entity.eyeOffset()); // y
             wrapper.write(Types.DOUBLE, (double) position.z()); // z
             wrapper.write(Types.LOW_PRECISION_VECTOR, new Vector3d(motion.x(), motion.y(), motion.z())); // velocity
             wrapper.write(Types.BYTE, MathUtil.float2Byte(rotation.x())); // pitch
@@ -190,6 +191,9 @@ public final class OtherPlayerPackets {
             final PlayerAbilities abilities = wrapper.read(BedrockTypes.PLAYER_ABILITIES); // abilities
             final Entity entity = entityTracker.getEntityByUid(abilities.entityUniqueId());
             if (entity instanceof ClientPlayerEntity clientPlayer) {
+                if (Boolean.getBoolean("mpmc.flight.debug")) {
+                    ViaBedrock.getPlatform().getLogger().info("[FLIGHT] host flying=" + abilities.getBooleanValue(AbilitiesIndex.Flying) + " mayFly=" + abilities.getBooleanValue(AbilitiesIndex.MayFly));
+                }
                 clientPlayer.setAbilities(abilities, wrapper);
             } else if (entity instanceof PlayerEntity player) {
                 player.setAbilities(abilities);

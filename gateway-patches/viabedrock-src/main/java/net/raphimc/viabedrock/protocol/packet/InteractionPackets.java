@@ -361,11 +361,7 @@ public final class InteractionPackets {
                 case Riding, Passenger -> { // TODO: This needs to be ordered properly based on the link types (rider first, then passengers)
                     vehicle.addPassenger(passenger.uniqueId());
 
-                    wrapper.write(Types.VAR_INT, entityTracker.getEntityByUid(linkType.fromEntityUniqueId()).javaId()); // vehicle
-                    wrapper.write(Types.VAR_INT, vehicle.passengers().size()); // number of passengers
-                    for (long passengerUid : vehicle.passengers()) {
-                        wrapper.write(Types.VAR_INT, entityTracker.getEntityByUid(passengerUid).javaId()); // passenger id
-                    }
+                    PlayerActionPacketFactory.writeJavaSetPassengers(wrapper, vehicle);
 
                     if (passenger.uniqueId() == entityTracker.getClientPlayer().uniqueId()) { // TODO: This could be applied to all passengers not just players
                         // The player is now riding an entity, update the state
@@ -375,11 +371,7 @@ public final class InteractionPackets {
                 case None -> { // Remove
                     vehicle.removePassenger(passenger.uniqueId());
 
-                    wrapper.write(Types.VAR_INT, vehicle.javaId()); // vehicle
-                    wrapper.write(Types.VAR_INT, vehicle.passengers().size()); // number of passengers
-                    for (long passengerUid : vehicle.passengers()) {
-                        wrapper.write(Types.VAR_INT, entityTracker.getEntityByUid(passengerUid).javaId()); // passenger id
-                    }
+                    PlayerActionPacketFactory.writeJavaSetPassengers(wrapper, vehicle);
 
                     if (passenger.uniqueId() == entityTracker.getClientPlayer().uniqueId()) { // TODO: This could be applied to all passengers not just players
                         // The player is no longer riding an entity, update the state

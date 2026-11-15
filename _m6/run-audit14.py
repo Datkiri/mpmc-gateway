@@ -48,6 +48,7 @@ def main():
            "--auth-method", "NONE", "--ignore-protocol-translation-errors", "true"]
     p = subprocess.Popen(cmd, cwd=DIR, stdout=logf, stderr=subprocess.STDOUT)
     print("audit gateway pid=%d port=%d" % (p.pid, PORT), flush=True)
+    probe_failures = []
     try:
         if not wait_port(PORT):
             print("[FATAL] port did not open")
@@ -63,7 +64,10 @@ def main():
                     r = subprocess.run([NODE, script], cwd=CLIENT, env=env,
                                        stdout=f, stderr=subprocess.STDOUT, timeout=120)
                 print("%-26s %-8s exit=%d" % (script, version, r.returncode), flush=True)
+                if r.returncode != 0:
+                    probe_failures.append((script, version, r.returncode))
             except subprocess.TimeoutExpired:
+                probe_failures.append((script, version, "TIMEOUT"))
                 print("%-26s %-8s TIMEOUT" % (script, version), flush=True)
             time.sleep(2.0)  # gap >= 2 s keeps BDS/RakNet session cleanup happy
         time.sleep(2.0)
@@ -84,7 +88,8 @@ def main():
                             "POST unmapped", "ERROR phase", "non-audit error",
                             "VERDICT", "CLIENTBOUND distinct", "SERVERBOUND distinct")):
             print(line.rstrip(), flush=True)
-    return r.returncode
+    print("probe failures=%d %s" % (len(probe_failures), probe_failures), flush=True)
+    return r.returncode if r.returncode else (1 if probe_failures else 0)
 
 
 if __name__ == "__main__":

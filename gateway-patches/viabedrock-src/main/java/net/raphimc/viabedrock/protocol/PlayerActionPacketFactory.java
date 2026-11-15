@@ -21,7 +21,7 @@ import com.viaversion.viaversion.api.connection.UserConnection;
 import com.viaversion.viaversion.api.minecraft.BlockPosition;
 import com.viaversion.viaversion.api.protocol.packet.PacketWrapper;
 import com.viaversion.viaversion.api.type.Types;
-import com.viaversion.viaversion.protocols.v1_21_9to1_21_11.packet.ClientboundPackets1_21_11;
+import com.viaversion.viaversion.protocols.v26_2to26_3.packet.ClientboundPackets26_3;
 import net.raphimc.viabedrock.api.model.entity.Entity;
 import net.raphimc.viabedrock.protocol.data.enums.bedrock.generated.InteractPacketPayload_Action;
 import net.raphimc.viabedrock.protocol.data.enums.bedrock.generated.PlayerActionType;
@@ -49,14 +49,19 @@ public final class PlayerActionPacketFactory {
     }
 
     public static void sendJavaSetPassengers(final UserConnection user, final Entity vehicle) {
-        final EntityTracker entityTracker = user.get(EntityTracker.class);
-        final PacketWrapper setPassengersPacket = PacketWrapper.create(ClientboundPackets1_21_11.SET_PASSENGERS, user);
-        setPassengersPacket.write(Types.VAR_INT, vehicle.javaId()); // vehicle
-        setPassengersPacket.write(Types.VAR_INT, vehicle.passengers().size()); // number of passengers
-        for (long passengerUid : vehicle.passengers()) {
-            setPassengersPacket.write(Types.VAR_INT, entityTracker.getEntityByUid(passengerUid).javaId()); // passenger id
-        }
+        final PacketWrapper setPassengersPacket = PacketWrapper.create(ClientboundPackets26_3.SET_PASSENGERS, user);
+        writeJavaSetPassengers(setPassengersPacket, vehicle);
         setPassengersPacket.send(BedrockProtocol.class);
+    }
+
+    public static void writeJavaSetPassengers(final PacketWrapper wrapper, final Entity vehicle) {
+        final EntityTracker entityTracker = wrapper.user().get(EntityTracker.class);
+        final int[] passengerIds = new int[vehicle.passengers().size()];
+        for (int i = 0; i < passengerIds.length; i++) {
+            passengerIds[i] = entityTracker.getEntityByUid(vehicle.passengers().get(i)).javaId();
+        }
+        wrapper.write(Types.VAR_INT, vehicle.javaId()); // vehicle
+        wrapper.write(Types.VAR_INT_ARRAY_PRIMITIVE, passengerIds); // passenger ids
     }
 
     private PlayerActionPacketFactory() {
