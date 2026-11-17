@@ -11,7 +11,7 @@ import (
 )
 
 func TestCodecForAllProtocols(t *testing.T) {
-	for _, id := range []int32{1001, 2168, 2169, 2193} {
+	for _, id := range []int32{748, 766, 827, 844, 898, 924, 944, 975, 1001, 2168, 2169, 2193, 2225} {
 		codec, err := codecFor(id)
 		if err != nil {
 			t.Fatalf("codecFor(%d): %v", id, err)

@@ -23,8 +23,8 @@ var hashScrubLogged atomic.Bool
 // scrubbed counterpart (i.e. the pinned adapter invented a block ID field).
 var hashScrubMismatchLogged atomic.Bool
 
-// resolveProto deliberately uses wire-only New() adapters. If those adapters
-// gain registry-aware conversion, keep block IDs mapped in exactly one layer.
+// Registry-aware codecs map numeric gameplay IDs. Chunk payloads retain their
+// structural translator; adapterMapsBlocks prevents mapping gameplay IDs twice.
 func configureBlockTranslation(s *session, clientProtocol int32, gd minecraft.GameData) error {
 	if s.hostProto == clientProtocol {
 		return nil
@@ -71,7 +71,7 @@ func adapterMapsBlocks(clientProto int32, pk packet.Packet, hashed bool) bool {
 		}
 		return true
 	}
-	if !adapter1001HasRegistry || clientProto != 1001 {
+	if !adapterHasRegistry(clientProto) {
 		return false
 	}
 	switch pk.(type) {

@@ -3,7 +3,18 @@ package blocktranslate
 import (
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
+
+	"github.com/df-mc/worldupgrader/itemupgrader"
+	v748 "github.com/shawtymarco/go-multiversion/data/v748"
+	v766 "github.com/shawtymarco/go-multiversion/data/v766"
+	v827 "github.com/shawtymarco/go-multiversion/data/v827"
+	v844 "github.com/shawtymarco/go-multiversion/data/v844"
+	v898 "github.com/shawtymarco/go-multiversion/data/v898"
+	v924 "github.com/shawtymarco/go-multiversion/data/v924"
+	v944 "github.com/shawtymarco/go-multiversion/data/v944"
+	v975 "github.com/shawtymarco/go-multiversion/data/v975"
 
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	v1001 "github.com/shawtymarco/go-multiversion/data/v1001"
@@ -76,6 +87,84 @@ func nativeEntries(src map[string]v1001.ItemEntry) []protocol.ItemEntry {
 	return out
 }
 
+func historicalTargetItems(id int32) (target map[string]mapping.TargetItem, err error) {
+	target = map[string]mapping.TargetItem{}
+	switch id {
+	case 748, 766:
+		var src map[string]int32
+		if id == 748 {
+			src, err = v748.Items()
+		} else {
+			src, err = v766.Items()
+		}
+		for name, runtimeID := range src {
+			target[name] = mapping.TargetItem{RuntimeID: runtimeID}
+		}
+	case 827:
+		var src map[string]v827.ItemEntry
+		src, err = v827.Items()
+		for name, s := range src {
+			target[name] = mapping.TargetItem{RuntimeID: s.RuntimeID, ComponentBased: s.ComponentBased, Version: s.Version, Data: s.Data}
+		}
+	case 844:
+		var src map[string]v844.ItemEntry
+		src, err = v844.Items()
+		for name, s := range src {
+			target[name] = mapping.TargetItem{RuntimeID: s.RuntimeID, ComponentBased: s.ComponentBased, Version: s.Version, Data: s.Data}
+		}
+	case 898:
+		var src map[string]v898.ItemEntry
+		src, err = v898.Items()
+		for name, s := range src {
+			target[name] = mapping.TargetItem{RuntimeID: s.RuntimeID, ComponentBased: s.ComponentBased, Version: s.Version, Data: s.Data}
+		}
+	case 924:
+		var src map[string]v924.ItemEntry
+		src, err = v924.Items()
+		for name, s := range src {
+			target[name] = mapping.TargetItem{RuntimeID: s.RuntimeID, ComponentBased: s.ComponentBased, Version: s.Version, Data: s.Data}
+		}
+	case 944:
+		var src map[string]v944.ItemEntry
+		src, err = v944.Items()
+		for name, s := range src {
+			target[name] = mapping.TargetItem{RuntimeID: s.RuntimeID, ComponentBased: s.ComponentBased, Version: s.Version, Data: s.Data}
+		}
+	case 975:
+		var src map[string]v975.ItemEntry
+		src, err = v975.Items()
+		for name, s := range src {
+			target[name] = mapping.TargetItem{RuntimeID: s.RuntimeID, ComponentBased: s.ComponentBased, Version: s.Version, Data: s.Data}
+		}
+	default:
+		return nil, fmt.Errorf("unsupported historical item table %d", id)
+	}
+	return target, err
+}
+
+// Match each pinned codec's resolver and target-only policy exactly.
+func historicalItemMapper(id int32, native []protocol.ItemEntry, target map[string]mapping.TargetItem) (*mapping.ItemMapper, error) {
+	resolve := func(name string) string {
+		name = itemupgrader.Upgrade(itemupgrader.ItemMeta{Name: name}).Name
+		if strings.HasPrefix(name, "minecraft:item.") {
+			name = "minecraft:" + strings.TrimPrefix(name, "minecraft:item.")
+		}
+		if name == "minecraft:reeds" {
+			name = "minecraft:sugar_cane"
+		}
+		if (id == 748 || id == 766 || id == 827) && name == "minecraft:chain" {
+			name = "minecraft:iron_chain"
+		}
+		return name
+	}
+	switch id {
+	case 748, 766, 898, 924, 944:
+		return mapping.NewItemMapperAllowingTargetOnly(native, target, resolve)
+	default:
+		return mapping.NewItemMapperWithResolver(native, target, resolve)
+	}
+}
+
 func loadItems() {
 	itemCatalog.items = map[int32][]protocol.ItemEntry{}
 
@@ -133,6 +222,19 @@ func loadItems() {
 		return
 	}
 	itemCatalog.items[2193] = entries2193
+	for _, id := range []int32{748, 766, 827, 844, 898, 924, 944, 975} {
+		target, err := historicalTargetItems(id)
+		if err != nil {
+			itemCatalog.err = fmt.Errorf("protocol%d item snapshot: %w", id, err)
+			return
+		}
+		m, err := historicalItemMapper(id, native, target)
+		if err != nil {
+			itemCatalog.err = fmt.Errorf("build %d item registry: %w", id, err)
+			return
+		}
+		itemCatalog.items[id] = m.TargetEntries()
+	}
 }
 
 // Items returns the item registry advertised to a client of protocol id. It errors when no table

@@ -8,6 +8,7 @@ package main
 // in reverse-engineering/TPBOT-CLIENT-PROFILE.md.
 
 import (
+	"bedrock-cross-version-relay/internal/versioncodec"
 	"context"
 	"encoding/json"
 	"errors"
@@ -233,13 +234,19 @@ func (s *session) join(addr string, direct bool, protoOverride int32, nameOverri
 	if err != nil {
 		return err
 	}
+	codec = versioncodec.Client(codec)
 	s.codec = codec
 
 	dialCtx, dialCancel := context.WithTimeout(s.ctx, s.cfg.spawnTimeout)
 	defer dialCancel()
+	profile := clientData(s.name)
+	profile.GameVersion = s.cfg.gameVersion
+	if profile.GameVersion == "" {
+		profile.GameVersion = codec.Ver()
+	}
 	d := minecraft.Dialer{
 		Protocol:                   codec,
-		ClientData:                 clientData(s.name),
+		ClientData:                 profile,
 		IdentityData:               login.IdentityData{DisplayName: s.name, Identity: uuid.New().String()},
 		DisconnectOnUnknownPackets: false,
 		ErrorLog:                   slog.New(s.errCounter),

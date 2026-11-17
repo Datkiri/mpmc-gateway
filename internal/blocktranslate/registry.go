@@ -9,6 +9,15 @@ import (
 	"fmt"
 	"sync"
 
+	v748 "github.com/shawtymarco/go-multiversion/data/v748"
+	v766 "github.com/shawtymarco/go-multiversion/data/v766"
+	v827 "github.com/shawtymarco/go-multiversion/data/v827"
+	v844 "github.com/shawtymarco/go-multiversion/data/v844"
+	v898 "github.com/shawtymarco/go-multiversion/data/v898"
+	v924 "github.com/shawtymarco/go-multiversion/data/v924"
+	v944 "github.com/shawtymarco/go-multiversion/data/v944"
+	v975 "github.com/shawtymarco/go-multiversion/data/v975"
+
 	"github.com/sandertv/gophertunnel/minecraft/nbt"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	v2225 "github.com/shawtymarco/go-multiversion/data/v2225"
@@ -113,33 +122,98 @@ func loadRegistry2225() (*registry, error) {
 	if err != nil {
 		return nil, fmt.Errorf("protocol 2225 block states: %w", err)
 	}
-	if len(states) == 0 {
-		return nil, fmt.Errorf("protocol 2225 palette is empty")
-	}
-	r := &registry{byHash: map[uint32]uint32{}, byKey: map[string]uint32{}}
+	converted := make([]mapping.BlockState, len(states))
 	for i, s := range states {
-		state := mapping.BlockState{Name: s.Name, Properties: s.Properties, Version: s.Version}
-		key, err := mapping.StateKey(s.Name, s.Properties)
+		converted[i] = mapping.BlockState{Name: s.Name, Properties: s.Properties, Version: s.Version}
+	}
+	return registryFromStates(NativeProtocol, converted)
+}
+
+// historicalStates decodes the pinned snapshots without assuming their on-disk
+// order is the protocol runtime-ID order. NewBlockMapper applies the same
+// historical ordering used by each registry-aware codec.
+func historicalStates(id int32) (states []mapping.BlockState, err error) {
+	switch id {
+	case 748:
+		var src []v748.BlockState
+		src, err = v748.BlockStates()
+		for _, s := range src {
+			states = append(states, mapping.BlockState{Name: s.Name, Properties: s.Properties, Version: s.Version})
+		}
+	case 766:
+		var src []v766.BlockState
+		src, err = v766.BlockStates()
+		for _, s := range src {
+			states = append(states, mapping.BlockState{Name: s.Name, Properties: s.Properties, Version: s.Version})
+		}
+	case 827:
+		var src []v827.BlockState
+		src, err = v827.BlockStates()
+		for _, s := range src {
+			states = append(states, mapping.BlockState{Name: s.Name, Properties: s.Properties, Version: s.Version})
+		}
+	case 844:
+		var src []v844.BlockState
+		src, err = v844.BlockStates()
+		for _, s := range src {
+			states = append(states, mapping.BlockState{Name: s.Name, Properties: s.Properties, Version: s.Version})
+		}
+	case 898:
+		var src []v898.BlockState
+		src, err = v898.BlockStates()
+		for _, s := range src {
+			states = append(states, mapping.BlockState{Name: s.Name, Properties: s.Properties, Version: s.Version})
+		}
+	case 924:
+		var src []v924.BlockState
+		src, err = v924.BlockStates()
+		for _, s := range src {
+			states = append(states, mapping.BlockState{Name: s.Name, Properties: s.Properties, Version: s.Version})
+		}
+	case 944:
+		var src []v944.BlockState
+		src, err = v944.BlockStates()
+		for _, s := range src {
+			states = append(states, mapping.BlockState{Name: s.Name, Properties: s.Properties, Version: s.Version})
+		}
+	case 975:
+		var src []v975.BlockState
+		src, err = v975.BlockStates()
+		for _, s := range src {
+			states = append(states, mapping.BlockState{Name: s.Name, Properties: s.Properties, Version: s.Version})
+		}
+	default:
+		return nil, fmt.Errorf("unsupported historical palette %d", id)
+	}
+	return states, err
+}
+
+func registryFromStates(id int32, states []mapping.BlockState) (*registry, error) {
+	r := &registry{states: states, byHash: map[uint32]uint32{}, byKey: map[string]uint32{}}
+	foundAir := false
+	for i, state := range states {
+		key, err := mapping.StateKey(state.Name, state.Properties)
 		if err != nil {
 			return nil, err
 		}
-		hash, err := StateHash(s.Name, s.Properties)
+		hash, err := StateHash(state.Name, state.Properties)
 		if err != nil {
 			return nil, err
 		}
-		if previous, exists := r.byHash[hash]; exists {
-			return nil, fmt.Errorf("palette2225 hash collision at %d and %d", previous, i)
+		if _, ok := r.byKey[key]; ok {
+			return nil, fmt.Errorf("palette%d duplicate state %s", id, key)
 		}
-		if _, exists := r.byKey[key]; exists {
-			return nil, fmt.Errorf("palette2225 duplicate state %s", s.Name)
+		if previous, ok := r.byHash[hash]; ok {
+			return nil, fmt.Errorf("palette%d hash collision at %d and %d", id, previous, i)
 		}
-		r.states = append(r.states, state)
 		r.hashes = append(r.hashes, hash)
-		r.byHash[hash] = uint32(i)
-		r.byKey[key] = uint32(i)
-		if s.Name == "minecraft:air" {
-			r.air = uint32(i)
+		r.byKey[key], r.byHash[hash] = uint32(i), uint32(i)
+		if state.Name == "minecraft:air" {
+			r.air, foundAir = uint32(i), true
 		}
+	}
+	if !foundAir {
+		return nil, fmt.Errorf("palette%d has no air state", id)
 	}
 	return r, nil
 }
@@ -173,6 +247,24 @@ func initCatalog() {
 		catalog.mappers[id] = m
 	}
 	catalog.mappers[2169] = catalog.mappers[2168]
+	for _, id := range []int32{748, 766, 827, 844, 898, 924, 944, 975} {
+		states, err := historicalStates(id)
+		if err != nil {
+			catalog.err = fmt.Errorf("palette%d: %w", id, err)
+			return
+		}
+		m, err := mapping.NewBlockMapper(native, states)
+		if err != nil {
+			catalog.err = fmt.Errorf("registry%d to%d: %w", id, NativeProtocol, err)
+			return
+		}
+		r, err := registryFromStates(id, m.TargetStates())
+		if err != nil {
+			catalog.err = err
+			return
+		}
+		catalog.registries[id], catalog.mappers[id] = r, m
+	}
 }
 
 // NativeRegistry returns a protocol's block palette as a mapping.BlockRegistry, so the

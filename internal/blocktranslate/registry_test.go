@@ -9,8 +9,8 @@ import (
 )
 
 func TestPinnedRegistriesAndAllPairs(t *testing.T) {
-	for _, source := range []int32{1001, 2168, 2169, 2193} {
-		for _, target := range []int32{1001, 2168, 2169, 2193} {
+	for _, source := range []int32{748, 766, 827, 844, 898, 924, 944, 975, 1001, 2168, 2169, 2193, NativeProtocol} {
+		for _, target := range []int32{748, 766, 827, 844, 898, 924, 944, 975, 1001, 2168, 2169, 2193, NativeProtocol} {
 			m, err := New(source, target, true, nil)
 			if err != nil {
 				t.Fatalf("%d -> %d: %v", source, target, err)

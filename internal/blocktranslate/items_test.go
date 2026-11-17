@@ -1,12 +1,21 @@
 package blocktranslate
 
 import (
+	"bytes"
 	"reflect"
 	"testing"
 
 	"github.com/sandertv/gophertunnel/minecraft"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
+	"github.com/shawtymarco/go-multiversion/protocols/v1_21_100"
+	"github.com/shawtymarco/go-multiversion/protocols/v1_21_110"
+	"github.com/shawtymarco/go-multiversion/protocols/v1_21_130"
+	"github.com/shawtymarco/go-multiversion/protocols/v1_21_40"
+	"github.com/shawtymarco/go-multiversion/protocols/v1_21_50"
+	"github.com/shawtymarco/go-multiversion/protocols/v1_26_0"
+	"github.com/shawtymarco/go-multiversion/protocols/v1_26_10"
+	"github.com/shawtymarco/go-multiversion/protocols/v1_26_20"
 	"github.com/shawtymarco/go-multiversion/protocols/v1_26_30"
 	"github.com/shawtymarco/go-multiversion/protocols/v1_26_44"
 	"github.com/shawtymarco/go-multiversion/protocols/v1_26_45"
@@ -61,9 +70,43 @@ func convertRegistry(t *testing.T, p minecraft.Protocol, items []protocol.ItemEn
 	if len(out) != 1 {
 		t.Fatalf("ConvertFromLatest returned %d packets, want 1", len(out))
 	}
-	reg, ok := out[0].(*packet.ItemRegistry)
+	// Historical codecs wrap packets for their wire layout. Decode their
+	// output using a separate wire-only client codec before inspecting IDs.
+	if reg, ok := out[0].(*packet.ItemRegistry); ok {
+		return reg.Items
+	}
+	var wire bytes.Buffer
+	out[0].Marshal(p.NewWriter(&wire, 0))
+	var client minecraft.Protocol
+	switch p.ID() {
+	case 748:
+		client = v1_21_40.New()
+	case 766:
+		client = v1_21_50.New()
+	case 827:
+		client = v1_21_100.New()
+	case 844:
+		client = v1_21_110.New()
+	case 898:
+		client = v1_21_130.New()
+	case 924:
+		client = v1_26_0.New()
+	case 944:
+		client = v1_26_10.New()
+	case 975:
+		client = v1_26_20.New()
+	default:
+		t.Fatalf("unexpected wrapped registry codec %d", p.ID())
+	}
+	pk := client.Packets(false)[packet.IDItemRegistry]()
+	pk.Marshal(client.NewReader(&wire, 0, true))
+	decoded := client.ConvertToLatest(pk, nil)
+	if len(decoded) != 1 {
+		t.Fatalf("client decoded %d packets", len(decoded))
+	}
+	reg, ok := decoded[0].(*packet.ItemRegistry)
 	if !ok {
-		t.Fatalf("ConvertFromLatest returned %T, want *packet.ItemRegistry", out[0])
+		t.Fatalf("client decoded %T", decoded[0])
 	}
 	return reg.Items
 }
@@ -86,6 +129,12 @@ func TestItemRegistryMatchesCodec(t *testing.T) {
 		id    int32
 		build func() (minecraft.Protocol, error)
 	}{
+		{827, func() (minecraft.Protocol, error) { return v1_21_100.NewWithRegistries(blocks, native) }},
+		{844, func() (minecraft.Protocol, error) { return v1_21_110.NewWithRegistries(blocks, native) }},
+		{898, func() (minecraft.Protocol, error) { return v1_21_130.NewWithRegistries(blocks, native) }},
+		{924, func() (minecraft.Protocol, error) { return v1_26_0.NewWithRegistries(blocks, native) }},
+		{944, func() (minecraft.Protocol, error) { return v1_26_10.NewWithRegistries(blocks, native) }},
+		{975, func() (minecraft.Protocol, error) { return v1_26_20.NewWithRegistries(blocks, native) }},
 		{1001, func() (minecraft.Protocol, error) { return v1_26_30.NewWithRegistries(blocks, native) }},
 		{2168, func() (minecraft.Protocol, error) { return v1_26_44.NewWithRegistries(blocks, native) }},
 		{2169, func() (minecraft.Protocol, error) { return v1_26_45.NewWithRegistries(blocks, native) }},

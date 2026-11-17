@@ -9,6 +9,7 @@ import (
 	"bedrock-cross-version-relay/internal/blocktranslate"
 
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
+	"github.com/shawtymarco/go-multiversion/mapping"
 	v1_26_50 "github.com/shawtymarco/go-multiversion/protocols/v1_26_50"
 )
 
@@ -20,6 +21,15 @@ func TestProtocolForVersion(t *testing.T) {
 		version string
 		want    int32
 	}{
+		{"1.21.40", 748}, {"1.21.41", 748}, {"1.21.42", 0}, {"1.21.43", 748}, {"1.21.44", 748},
+		{"1.21.50", 766}, {"1.21.51", 766},
+		{"1.21.100", 827}, {"1.21.102", 827},
+		{"1.21.110", 844}, {"1.21.114", 844},
+		{"1.21.130", 898}, {"1.21.132", 898},
+		{"1.26.0", 924}, {"1.26.3", 924},
+		{"1.26.10", 944}, {"1.26.14", 944},
+		{"1.26.20", 975}, {"1.26.23", 975},
+		{"1.21.0", 0}, {"1.21.20", 0}, {"1.21.60", 0}, {"1.21.90", 0}, {"1.26.70", 0},
 		{"1.26.30", 1001}, {"1.26.31", 1001}, {"1.26.32", 1001}, {"1.26.33", 1001},
 		{"1.26.34", 1001}, {"1.26.35", 1001}, {"1.26.36", 1001},
 		{"1.26.40", 2168}, {"1.26.41", 2168}, {"1.26.42", 2168}, {"1.26.43", 2168}, {"1.26.44", 2168},
@@ -36,7 +46,7 @@ func TestProtocolForVersion(t *testing.T) {
 
 	// Every mapped protocol must have a codec; a table entry pointing at a protocol the relay
 	// cannot serve would let verifyHostProtocol accept a session that cannot decode the wire.
-	for _, id := range []int32{1001, 2168, 2169, 2193, 2225} {
+	for _, id := range []int32{748, 766, 827, 844, 898, 924, 944, 975, 1001, 2168, 2169, 2193, 2225} {
 		p, ok := resolveProto(id)
 		if !ok {
 			t.Errorf("resolveProto(%d) has no codec", id)
@@ -63,7 +73,7 @@ func TestAutoClientProtocolsCoverEveryCodec(t *testing.T) {
 		}
 		got[int32(id)] = true
 	}
-	for _, id := range []int32{1001, 2168, 2169, 2193, 2225} {
+	for _, id := range []int32{748, 766, 827, 844, 898, 924, 944, 975, 1001, 2168, 2169, 2193, 2225} {
 		if !got[id] {
 			t.Errorf("-client-proto auto is missing protocol %d", id)
 		}
@@ -79,7 +89,7 @@ func TestAutoClientProtocolsCoverEveryCodec(t *testing.T) {
 		}
 		probed[id] = true
 	}
-	for _, id := range []int32{1001, 2168, 2169, 2193, 2225} {
+	for _, id := range []int32{748, 766, 827, 844, 898, 924, 944, 975, 1001, 2168, 2169, 2193, 2225} {
 		if !probed[id] {
 			t.Errorf("hostProtoProbeOrder never tries protocol %d", id)
 		}
@@ -166,6 +176,80 @@ func TestVerifyHostProtocol(t *testing.T) {
 		} else {
 			t.Logf("%s: (%q, %v)", c.name, gotVer, gotOK)
 		}
+	}
+}
+
+// TestHistoricalRegistryWiring checks the actual production constructors against
+// the chunk mapper and client item catalog. A codec accepting login is not enough:
+// every native block must use the same target ordering in updates and chunks.
+func TestHistoricalRegistryWiring(t *testing.T) {
+	for _, id := range []int32{748, 766, 827, 844, 898, 924, 944, 975} {
+		t.Run(strconv.Itoa(int(id)), func(t *testing.T) {
+			codec, ok := resolveProto(id)
+			if !ok || !adapterHasRegistry(id) {
+				t.Fatal("production codec is missing registry mapping")
+			}
+			items, _, err := clientItemRegistry(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			out := codec.ConvertFromLatest(&packet.ItemRegistry{Items: items}, nil)
+			if len(out) != 1 {
+				t.Fatalf("ItemRegistry dropped: %d packets", len(out))
+			}
+			reg, ok := unwrapWirePacket(out[0]).(*packet.ItemRegistry)
+			if !ok {
+				t.Fatalf("unexpected registry packet %T", out[0])
+			}
+			want, err := blocktranslate.Items(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if !sameItemIDs(reg.Items, want) {
+				t.Fatalf("codec item registry differs from client catalog: %d vs %d", len(reg.Items), len(want))
+			}
+			blocks, err := blocktranslate.NativeRegistry(id)
+			if err != nil {
+				t.Fatal(err)
+			}
+			mapper, ok := codec.(interface{ MapBlockRuntimeID(uint32) (uint32, bool) })
+			if !ok {
+				t.Fatal("codec has no block mapping hook")
+			}
+			native, err := blocktranslate.NativeRegistry(blocktranslate.NativeProtocol)
+			if err != nil {
+				t.Fatal(err)
+			}
+			chunkMapper, err := blocktranslate.New(blocktranslate.NativeProtocol, id, false, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			checked := 0
+			for n := 0; n < native.BlockCount(); n++ {
+				target, valid := mapper.MapBlockRuntimeID(uint32(n))
+				if !valid || target >= uint32(blocks.BlockCount()) {
+					t.Fatalf("invalid target block %d -> %d", n, target)
+				}
+				name, props, _ := native.RuntimeIDToState(uint32(n))
+				targetName, targetProps, _ := blocks.RuntimeIDToState(target)
+				key, _ := mapping.StateKey(name, props)
+				targetKey, _ := mapping.StateKey(targetName, targetProps)
+				// The relay visibly substitutes info_update for absent states,
+				// whereas upstream substitutes air. Compare only exact mappings.
+				if key != targetKey {
+					continue
+				}
+				chunkTarget, err := chunkMapper.Map(uint32(n))
+				if err != nil || chunkTarget != target {
+					t.Fatalf("chunk/update block mismatch %d: chunk=%d codec=%d err=%v", n, chunkTarget, target, err)
+				}
+				checked++
+			}
+			if checked == 0 {
+				t.Fatal("no exact block mappings checked")
+			}
+			t.Logf("items=%d blocks=%d exact chunk/update mappings=%d", len(want), blocks.BlockCount(), checked)
+		})
 	}
 }
 

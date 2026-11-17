@@ -6,7 +6,7 @@
 
 Let a **1.26.60 client join a 1.26.33 host**, and let a **1.26.33 client join a 1.26.60 host** —
 without patching the game, without a modified APK, and without everyone installing the same version.
-(Five protocol families are supported; the original 1.26.51 ↔ 1.26.33 case is still covered.)
+Thirteen protocol families are selectable. The eight newly integrated historical families have live custom-client coverage against BDS 1.26.60.6; their historical-host paths remain experimental.
 
 It works as a small Go proxy: the client connects to the relay using its own protocol, the relay
 talks to the LAN world using the host's protocol, and packets are re-encoded and block palettes are
@@ -38,8 +38,8 @@ This project is an experiment in doing exactly that, out in the open:
 - translate the **packet stream** between two Bedrock protocols, both directions;
 - translate **block palettes** in `SubChunk` (v8/v9), inline `LevelChunk`, `UpdateBlock`,
   `UpdateBlockSynced`, `UpdateSubChunkBlocks`, and the reverse direction for clicked/broken blocks;
-- translate the **item registry** so inventories survive the hop — a table is pinned for each of
-  `1001`, `2168`, `2169`, `2193` and native `2225`; see [Block and item translation](#block-and-item-translation);
+- translate the **item registry** using pinned tables for all thirteen selectable families;
+  see [Block and item translation](#block-and-item-translation);
 - keep everything else as close to "just forward the bytes" as possible, so behaviour stays
   predictable and failures are visible in the log instead of silently corrupting the world.
 
@@ -53,18 +53,57 @@ The existing `joiner_new.exe` custom client also discovered the v5 card, complet
 
 Test topology: native/custom client → LAN signaling UDP 8555 (broadcast destination UDP 7551) → NetherNet ingress → xver → RakNet `127.0.0.1:19132` → BDS 1.26.60.6. The isolated lab BDS uses `online-mode=false`; this does not change the raw mpmc tunnel or its gateway licensing boundary.
 
-Expansion requested for `1.26.7x`, `1.26.2x`, `1.26.1x`, `1.26.x`, `1.21.1xx`, and `1.21.x` is **pending implementation and version-specific custom-client verification**. These ranges must not be inferred to work from the five codec families below.
+## Historical client expansion (2026-11-17)
+
+Eight historical adapters were integrated with native-2225 semantic block/item registries. Both custom clients now accept exact login versions through `-game-version`. Protocols 748/766 recover the item identity table from received `StartGame` bytes, because the pinned readers otherwise discard it; component definitions are merged without replacing observed wire IDs.
+
+The final relay build was tested serially on `127.0.0.1:19165`, forwarding to the existing BDS 1.26.60.6 on `127.0.0.1:19132`. Fourteen five-second sessions covered all thirteen selectable families. Every row spawned, received **385 LevelChunk packets**, matched its pinned item identity table, sent **99–100 PlayerAuthInput packets**, and reported **zero decode/send errors, zero observed AIR-loss entries and zero unknown item IDs**.
+
+| Protocol | Exact client version tested | Item table | Stacks decoded / visible |
+| --- | --- | --- | --- |
+| 748 | 1.21.40 | 1749 | 3513 / 3414 |
+| 748 | 1.21.44 | 1749 | 3514 / 3414 |
+| 766 | 1.21.51 | 1789 | 3585 / 3484 |
+| 827 | 1.21.102 | 1836 | 4054 / 3952 |
+| 844 | 1.21.114 | 1888 | 4145 / 4043 |
+| 898 | 1.21.132 | 1905 | 4180 / 4078 |
+| 924 | 1.26.3 | 1905 | 4180 / 4078 |
+| 944 | 1.26.14 | 1907 | 4183 / 4081 |
+| 975 | 1.26.23 | 1941 | 4281 / 4179 |
+| 1001 | 1.26.36 | 1933 | 4296 / 4194 |
+| 2168 | 1.26.44 | 1976 | 4730 / 4628 |
+| 2169 | 1.26.45 | 1976 | 4730 / 4628 |
+| 2193 | 1.26.52 | 2076 | 4909 / 4807 |
+| 2225 | 1.26.60 | 2080 | 6828 / 6726 |
+
+A further twenty exact-version sessions covered every remaining recognized alias in the eight new historical families. Eighteen passed on the first run. `1.26.2` and `1.26.11` each spawned with correct registries/chunks but recorded one send error at quit; both passed a separate 3.5-second retest with zero decode/send errors. Preserve that first-run failure rather than treating all twenty initial sessions as clean. All 29 historical aliases therefore have a successful custom-client session, with these two intermittent shutdown observations still unresolved.
+
+Local evidence: `D:/tmp/xver-final-census-matrix.json`, `D:/tmp/xver-final-alias-matrix.json`, `D:/tmp/xver-final-alias-retry-<version>.json` and per-session `.json/.log` files. Runtime reports and BDS binaries are not shipped. The full root test suite and the relay, selfcheck and clientclone builds passed before this matrix.
+
+These measurements cover login/spawn, delivered chunks, received item identities and packet writes. They do not establish rendered terrain correctness, accepted movement, successful placement/breaking, inventory mutation or entity interaction. Zero observed AIR loss also does not mean every native item exists in the older game: unsupported entries can be omitted before reaching the client.
+
+Historical-host conversion is **experimental and unverified**: registry-aware readers can treat hashed block IDs as dense palette indices and drop packets before relay forwarding. Optional stacks, falling-block metadata, legacy host item tables and opaque chunk payloads require further host-side validation. Do not infer all-pairs compatibility.
+
+There is no verified `1.26.7x` adapter in the pinned dependency. Early/intermediate `1.21.x` families absent from the table remain unsupported. `1.21.42` is excluded by the pinned adapter. Broad ranges requested by the user are only partially covered by the explicit aliases below.
 
 ## Supported versions
 
 Protocol IDs, not marketing versions — a build can share a protocol ID and still differ in registries.
 
-| Protocol | Minecraft versions | Role |
+| Protocol | Recognized version aliases | Scope |
 | --- | --- | --- |
-| `1001` | 1.26.30 – 1.26.36 | client and host |
-| `2168` | 1.26.40 – 1.26.44 | client and host |
-| `2169` | 1.26.45 | client and host |
-| `2193` | 1.26.50 – 1.26.52 | client and host |
+| `748` | 1.21.40, 1.21.41, 1.21.43, 1.21.44 | historical client; host experimental |
+| `766` | 1.21.50 – 1.21.51 | historical client; host experimental |
+| `827` | 1.21.100 – 1.21.102 | historical client; host experimental |
+| `844` | 1.21.110 – 1.21.114 | historical client; host experimental |
+| `898` | 1.21.130 – 1.21.132 | historical client; host experimental |
+| `924` | 1.26.0 – 1.26.3 | historical client; host experimental |
+| `944` | 1.26.10 – 1.26.14 | historical client; host experimental |
+| `975` | 1.26.20, 1.26.21, 1.26.23 | historical client; host experimental |
+| `1001` | 1.26.30 – 1.26.36 | client and host; measured paths below |
+| `2168` | 1.26.40 – 1.26.44 | client and host; measured paths below |
+| `2169` | 1.26.45 | client and host; measured paths below |
+| `2193` | 1.26.50 – 1.26.52 | client and host; measured paths below |
 | `2225` | 1.26.60 | client and host (**native**) |
 
 `1.26.52` shares protocol `2193` with `1.26.50`/`1.26.51`, but the *version string* is not
@@ -72,10 +111,7 @@ interchangeable: a Bedrock client refuses a server whose `GameVersion` is older 
 (measured: a 1.26.52 client handed `1.26.50` crashes itself after ~0.3 s), so the relay overrides
 `StartGame.GameVersion` with the client's real string.
 
-Any client protocol can be paired with any host protocol — 25 combinations. Protocol detection is
-automatic by default: the relay reads the host's protocol from LAN discovery (`ServerData` v5/v6/v7),
-and if the host broadcasts a format without a `Protocol` field it probes the host with
-`2225 → 2193 → 2169 → 1001 → 2168` (a wrong-protocol login is rejected almost immediately, so the probe is cheap).
+Protocol selection is automatic by default: the relay reads the host's protocol from LAN discovery (`ServerData` v5/v6/v7), and if necessary probes `2225 → 2193 → 2169 → 1001 → 2168 → 975 → 944 → 924 → 898 → 844 → 827 → 766 → 748`. Selection availability is not an all-pairs test result; the historical-host paths carry the limitations above.
 
 See [1.26.60 / protocol 2225](#1260--protocol-2225) for what "native" means after the upgrade: the
 engine still translates the four older families, but its internal palette/item tables now come from

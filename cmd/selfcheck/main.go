@@ -30,6 +30,7 @@ import (
 
 	"bedrock-cross-version-relay/internal/blocktranslate"
 	"bedrock-cross-version-relay/internal/lansignal"
+	"bedrock-cross-version-relay/internal/versioncodec"
 
 	"github.com/df-mc/go-nethernet"
 	"github.com/google/uuid"
@@ -37,6 +38,14 @@ import (
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/login"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
+	v1_21_100 "github.com/shawtymarco/go-multiversion/protocols/v1_21_100"
+	v1_21_110 "github.com/shawtymarco/go-multiversion/protocols/v1_21_110"
+	v1_21_130 "github.com/shawtymarco/go-multiversion/protocols/v1_21_130"
+	v1_21_40 "github.com/shawtymarco/go-multiversion/protocols/v1_21_40"
+	v1_21_50 "github.com/shawtymarco/go-multiversion/protocols/v1_21_50"
+	v1_26_0 "github.com/shawtymarco/go-multiversion/protocols/v1_26_0"
+	v1_26_10 "github.com/shawtymarco/go-multiversion/protocols/v1_26_10"
+	v1_26_20 "github.com/shawtymarco/go-multiversion/protocols/v1_26_20"
 	v1_26_30 "github.com/shawtymarco/go-multiversion/protocols/v1_26_30"
 	v1_26_44 "github.com/shawtymarco/go-multiversion/protocols/v1_26_44"
 	v1_26_45 "github.com/shawtymarco/go-multiversion/protocols/v1_26_45"
@@ -60,6 +69,7 @@ const cpuNote = "not measured: process-level CPU is not portable across platform
 type config struct {
 	addr         string
 	proto        int32
+	gameVersion  string
 	spawnTimeout time.Duration
 	soak         time.Duration
 	reconnect    int
@@ -218,7 +228,25 @@ func sameItemIDs(a, b []protocol.ItemEntry) bool {
 }
 
 func codecFor(id int32) (minecraft.Protocol, error) {
+	// Keep target-era IDs visible for independent registry assertions. These
+	// client codecs decode the wire; the relay owns semantic translation.
 	switch id {
+	case 748:
+		return v1_21_40.New(), nil
+	case 766:
+		return v1_21_50.New(), nil
+	case 827:
+		return v1_21_100.New(), nil
+	case 844:
+		return v1_21_110.New(), nil
+	case 898:
+		return v1_21_130.New(), nil
+	case 924:
+		return v1_26_0.New(), nil
+	case 944:
+		return v1_26_10.New(), nil
+	case 975:
+		return v1_26_20.New(), nil
 	case 1001:
 		return v1_26_30.New(), nil
 	case 2168:
@@ -230,8 +258,15 @@ func codecFor(id int32) (minecraft.Protocol, error) {
 	case 2225:
 		return minecraft.DefaultProtocol, nil
 	default:
-		return nil, fmt.Errorf("invalid -proto %d (valid: 1001|2168|2169|2193|2225)", id)
+		return nil, fmt.Errorf("invalid -proto %d (valid: 748|766|827|844|898|924|944|975|1001|2168|2169|2193|2225)", id)
 	}
+}
+
+func clientGameVersion(cfg config, codec minecraft.Protocol) string {
+	if cfg.gameVersion != "" {
+		return cfg.gameVersion
+	}
+	return codec.Ver()
 }
 
 func isDeadline(err error) bool {
@@ -328,7 +363,7 @@ func dialRelay(ctx context.Context, cfg config, codec minecraft.Protocol, name s
 	}
 	d := minecraft.Dialer{
 		Protocol:                   codec,
-		ClientData:                 login.ClientData{GameVersion: codec.Ver()},
+		ClientData:                 login.ClientData{GameVersion: clientGameVersion(cfg, codec)},
 		IdentityData:               login.IdentityData{DisplayName: name, Identity: uuid.New().String()},
 		DisconnectOnUnknownPackets: false,
 	}
@@ -467,7 +502,7 @@ func dialLAN(ctx context.Context, cfg config, codec minecraft.Protocol, name str
 
 	d := minecraft.Dialer{
 		Protocol:                   codec,
-		ClientData:                 login.ClientData{GameVersion: codec.Ver()},
+		ClientData:                 login.ClientData{GameVersion: clientGameVersion(cfg, codec)},
 		IdentityData:               login.IdentityData{DisplayName: name, Identity: uuid.New().String()},
 		DisconnectOnUnknownPackets: false,
 		ErrorLog:                   log,
@@ -505,6 +540,7 @@ func dialLAN(ctx context.Context, cfg config, codec minecraft.Protocol, name str
 }
 
 func runSession(cfg config, codec minecraft.Protocol, index int) session {
+	codec = versioncodec.Client(codec)
 	start := time.Now()
 	s := session{
 		Proto:            cfg.proto,
@@ -774,7 +810,8 @@ func printSummary(sessions []session, cfg config) {
 func run() int {
 	var (
 		addr         = flag.String("addr", "127.0.0.1:19164", "RakNet listener address of the relay")
-		proto        = flag.Int("proto", 2193, "client protocol (1001|2168|2169|2193|2225)")
+		proto        = flag.Int("proto", 2193, "client protocol (748|766|827|844|898|924|944|975|1001|2168|2169|2193|2225)")
+		gameVersion  = flag.String("game-version", "", "exact login GameVersion (default: selected codec version)")
 		spawnTimeout = flag.Duration("spawn-timeout", 15*time.Second, "timeout for dial + DoSpawn")
 		soak         = flag.Duration("soak", 0, "keep the connection and read packets for this long (>0 enables the soak assertion)")
 		reconnect    = flag.Int("reconnect", 0, "number of additional reconnects after the initial session (total = 1 + N)")
@@ -792,6 +829,7 @@ func run() int {
 	cfg := config{
 		addr:         *addr,
 		proto:        int32(*proto),
+		gameVersion:  *gameVersion,
 		spawnTimeout: *spawnTimeout,
 		soak:         *soak,
 		reconnect:    *reconnect,

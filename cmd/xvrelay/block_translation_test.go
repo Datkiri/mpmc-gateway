@@ -463,6 +463,131 @@ func TestHashedBlockScrubRestoresInput(t *testing.T) {
 	}
 }
 
+func TestHistoricalNumericUpdateBlockMapsOnce(t *testing.T) {
+	const clientProtocol = int32(844)
+	codec, ok := resolveProto(clientProtocol)
+	if !ok {
+		t.Fatal("historical codec unavailable")
+	}
+	mapper, err := blocktranslate.New(blocktranslate.NativeProtocol, clientProtocol, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nativeID, ok := mapper.SourceID("minecraft:stone", nil)
+	if !ok {
+		t.Fatal("native stone missing")
+	}
+	clientID, err := mapper.Map(nativeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nativeID == clientID {
+		t.Fatal("fixture must use different native and client numeric IDs")
+	}
+	var pk packet.Packet = &packet.UpdateBlock{NewBlockRuntimeID: nativeID}
+	if !adapterMapsBlocks(clientProtocol, pk, false) {
+		pk, err = translateSessionPacket(&session{blocks: mapper}, pk)
+		if err != nil {
+			t.Fatal(err)
+		}
+	}
+	out := codec.ConvertFromLatest(pk, nil)
+	if len(out) != 1 {
+		t.Fatalf("codec returned %d packets, want 1", len(out))
+	}
+	if got := unwrapWirePacket(out[0]).(*packet.UpdateBlock).NewBlockRuntimeID; got != clientID {
+		t.Fatalf("numeric block mapped twice: native=%d client=%d got=%d", nativeID, clientID, got)
+	}
+	for _, chunk := range []packet.Packet{&packet.LevelChunk{}, &packet.SubChunk{}} {
+		if adapterMapsBlocks(clientProtocol, chunk, false) {
+			t.Fatalf("%T must retain structural translation", chunk)
+		}
+	}
+	t.Logf("native %d -> client %d exactly once", nativeID, clientID)
+}
+
+func TestHistoricalNumericInteractionsMapToNative(t *testing.T) {
+	const clientProtocol = int32(844)
+	codec, ok := resolveProto(clientProtocol)
+	if !ok {
+		t.Fatal("historical codec unavailable")
+	}
+	mapper, err := blocktranslate.New(blocktranslate.NativeProtocol, clientProtocol, false, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	nativeID, ok := mapper.SourceID("minecraft:stone", nil)
+	if !ok {
+		t.Fatal("native stone missing")
+	}
+	clientID, err := mapper.Map(nativeID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if nativeID == clientID {
+		t.Fatal("fixture must use different native and client numeric IDs")
+	}
+	items, err := blocktranslate.Items(clientProtocol)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var stoneItem int32
+	for _, item := range items {
+		if item.Name == "minecraft:stone" {
+			stoneItem = int32(item.RuntimeID)
+			break
+		}
+	}
+	if stoneItem == 0 {
+		t.Fatal("client stone item missing")
+	}
+	p := clientVersionProtocol{Protocol: codec}
+	// The wrapper only reads GameData; a zero connection supplies numeric mode
+	// without requiring a listener or a live server.
+	conn := new(minecraft.Conn)
+	for _, name := range []string{"InventoryTransaction", "PlayerAuthInput"} {
+		t.Run(name, func(t *testing.T) {
+			tx := protocol.UseItemTransactionData{
+				ActionType:     protocol.UseItemActionClickBlock,
+				BlockRuntimeID: clientID,
+				HeldItem: protocol.ItemInstance{Stack: protocol.ItemStack{
+					ItemType:       protocol.ItemType{NetworkID: stoneItem},
+					Count:          1,
+					BlockRuntimeID: int32(clientID),
+				}},
+			}
+			var pk packet.Packet = &packet.InventoryTransaction{TransactionData: &tx}
+			if name == "PlayerAuthInput" {
+				pk = &packet.PlayerAuthInput{ItemInteractionData: protocol.Option(tx)}
+			}
+			out := p.ConvertToLatest(pk, conn)
+			if len(out) != 1 {
+				t.Fatalf("codec returned %d packets, want 1", len(out))
+			}
+			var got protocol.UseItemTransactionData
+			switch q := unwrapWirePacket(out[0]).(type) {
+			case *packet.InventoryTransaction:
+				got = *q.TransactionData.(*protocol.UseItemTransactionData)
+			case *packet.PlayerAuthInput:
+				var set bool
+				got, set = q.ItemInteractionData.Value()
+				if !set {
+					t.Fatal("interaction disappeared")
+				}
+			default:
+				t.Fatalf("unexpected packet %T", q)
+			}
+			if got.BlockRuntimeID != nativeID || got.HeldItem.Stack.BlockRuntimeID != int32(nativeID) {
+				t.Fatalf("client=%d native=%d: clicked=%d held=%d", clientID, nativeID, got.BlockRuntimeID, got.HeldItem.Stack.BlockRuntimeID)
+			}
+			if got.ActionType != protocol.UseItemActionClickBlock {
+				t.Fatalf("click action changed to %d", got.ActionType)
+			}
+			t.Logf("client %d -> native %d for clicked and held block IDs", clientID, nativeID)
+		})
+	}
+}
+
 func TestAdapterMapsBlocksHashed(t *testing.T) {
 	if !adapterMapsBlocks(2169, &packet.UpdateBlock{}, true) {
 		t.Fatal("hashed mode: dynamic block packets must skip blocktranslate")
@@ -473,8 +598,12 @@ func TestAdapterMapsBlocksHashed(t *testing.T) {
 	if adapterMapsBlocks(1001, &packet.LevelChunk{}, true) || adapterMapsBlocks(1001, &packet.SubChunk{}, true) {
 		t.Fatal("hashed mode: chunk payloads still need structural translation")
 	}
-	if adapterMapsBlocks(2169, &packet.UpdateBlock{}, false) {
-		t.Fatal("numeric mode: non-1001 codecs need blocktranslate")
+	proto2169()
+	if !adapterMapsBlocks(2169, &packet.UpdateBlock{}, false) {
+		t.Fatal("numeric mode: registry-aware codecs must skip blocktranslate")
+	}
+	if adapterMapsBlocks(2225, &packet.UpdateBlock{}, false) {
+		t.Fatal("numeric mode: codecs without registry mapping need blocktranslate")
 	}
 }
 
