@@ -109,7 +109,9 @@ type session struct {
 	dead   chan struct{}
 	wg     sync.WaitGroup
 
-	mu sync.Mutex
+	// sendMu serializes application writes with connection shutdown.
+	sendMu sync.Mutex
+	mu     sync.Mutex
 	// World state, updated from server packets.
 	pos      mgl32.Vec3
 	pitch    float32
@@ -459,6 +461,11 @@ func (s *session) countPacket(pk packet.Packet) {
 }
 
 func (s *session) send(pk packet.Packet) error {
+	s.sendMu.Lock()
+	defer s.sendMu.Unlock()
+	if err := s.ctx.Err(); err != nil {
+		return err
+	}
 	if s.conn == nil {
 		return errors.New("not joined")
 	}
@@ -690,9 +697,13 @@ func (s *session) chunkLoop() {
 // stop cancels background loops and closes the connection exactly once.
 func (s *session) stop() {
 	s.cancel()
+	// Finish an in-flight write before closing. A ready ticker/handler that
+	// reaches send later observes cancellation without touching the connection.
+	s.sendMu.Lock()
 	if s.conn != nil {
 		_ = s.conn.Close()
 	}
+	s.sendMu.Unlock()
 	s.wg.Wait()
 }
 

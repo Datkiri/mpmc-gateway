@@ -1,14 +1,52 @@
 package main
 
 import (
+	"context"
 	"encoding/base64"
 	"encoding/json"
+	"errors"
 	"strings"
 	"testing"
 
+	"github.com/sandertv/gophertunnel/minecraft"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
+
+// A ticker or packet handler may already be ready when shutdown starts.
+// Such a send must stop before reaching the connection or affecting metrics.
+func TestSendAfterStopDoesNotAttemptWrite(t *testing.T) {
+	s := newSession(config{proto: 924})
+	s.stop()
+	if err := s.send(&packet.PlayerAuthInput{}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("send after stop = %v, want context.Canceled", err)
+	}
+	if s.sentTotal != 0 || s.sendErrors != 0 || len(s.sent) != 0 {
+		t.Fatalf("send after stop affected metrics: total=%d errors=%d packets=%v", s.sentTotal, s.sendErrors, s.sent)
+	}
+}
+
+func TestSendAfterCancellationDoesNotTouchConnection(t *testing.T) {
+	s := newSession(config{proto: 924})
+	// An uninitialized Conn panics if WritePacket is reached. Cancellation
+	// must prevent a pending ticker or handler from reaching it at all.
+	s.conn = &minecraft.Conn{}
+	s.cancel()
+	if err := s.send(&packet.PlayerAuthInput{}); !errors.Is(err, context.Canceled) {
+		t.Fatalf("send after cancellation = %v, want context.Canceled", err)
+	}
+	if s.sentTotal != 0 || s.sendErrors != 0 {
+		t.Fatalf("cancelled write changed metrics: total=%d errors=%d", s.sentTotal, s.sendErrors)
+	}
+}
+
+func TestSendBeforeJoinIsAnError(t *testing.T) {
+	s := newSession(config{proto: 924})
+	defer s.stop()
+	if err := s.send(&packet.PlayerAuthInput{}); err == nil || errors.Is(err, context.Canceled) {
+		t.Fatalf("send before join = %v, want not-joined error", err)
+	}
+}
 
 func TestCodecForAllProtocols(t *testing.T) {
 	for _, id := range []int32{748, 766, 827, 844, 898, 924, 944, 975, 1001, 2168, 2169, 2193, 2225} {
