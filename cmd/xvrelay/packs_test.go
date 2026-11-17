@@ -1,6 +1,8 @@
 package main
 
 import (
+	"bytes"
+	"reflect"
 	"strings"
 	"testing"
 
@@ -9,6 +11,87 @@ import (
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
+
+// Exercise the client-facing converter, including the real target wire codec.
+func TestClientResourcePackStackCompatibility(t *testing.T) {
+	for _, id := range []int32{1001, 2168, 2169, 2193, 2225} {
+		codec, ok := resolveProto(id)
+		if !ok {
+			t.Fatalf("missing codec %d", id)
+		}
+		input := &packet.ResourcePackStack{
+			BaseGameVersion:     "1.26.60",
+			TexturePackRequired: true,
+			TexturePacks: []protocol.StackResourcePack{
+				{UUID: "d34cfa4b-2ad1-453d-a0db-668b429a3ea0", Version: "1.26.40"},
+				{UUID: "b41c2785-c512-4a49-af56-3a87afd47c57", Version: "1.21.30"},
+				{UUID: "custom-pack", Version: "1.26.40"},
+				{UUID: "d34cfa4b-2ad1-453d-a0db-668b429a3ea0", Version: "1.26.41", SubPackName: "alternate"},
+			},
+			Experiments:                  []protocol.ExperimentData{{Name: "test", Enabled: true}},
+			ExperimentsPreviouslyToggled: true,
+			IncludeEditorPacks:           true,
+		}
+		before := *input
+		before.TexturePacks = append([]protocol.StackResourcePack(nil), input.TexturePacks...)
+		before.Experiments = append([]protocol.ExperimentData(nil), input.Experiments...)
+		p := clientVersionProtocol{Protocol: codec}
+		out := p.ConvertFromLatest(input, nil)
+		if len(out) != 1 {
+			t.Fatalf("protocol %d: got %d packets", id, len(out))
+		}
+		got, ok := unwrapWirePacket(out[0]).(*packet.ResourcePackStack)
+		if !ok {
+			t.Fatalf("protocol %d: unexpected %T", id, out[0])
+		}
+		if got.BaseGameVersion != codec.Ver() {
+			t.Errorf("protocol %d: base version %q, want %q", id, got.BaseGameVersion, codec.Ver())
+		}
+		want := before
+		want.BaseGameVersion = codec.Ver()
+		if id == 1001 {
+			want.TexturePacks = before.TexturePacks[1:]
+		}
+		if !reflect.DeepEqual(*got, want) {
+			t.Errorf("protocol %d: stack differs: got %+v, want %+v", id, *got, want)
+		}
+		if !reflect.DeepEqual(*input, before) {
+			t.Fatal("converter mutated shared input")
+		}
+		var wire bytes.Buffer
+		out[0].Marshal(codec.NewWriter(&wire, 0))
+		decoded := codec.Packets(false)[packet.IDResourcePackStack]()
+		decoded.Marshal(codec.NewReader(&wire, 0, true))
+		if wire.Len() != 0 || !reflect.DeepEqual(unwrapWirePacket(decoded), &want) {
+			t.Errorf("protocol %d: stack wire round trip differs or has trailing bytes", id)
+		}
+	}
+}
+
+func TestClientResourcePackStackNegotiatedVersion(t *testing.T) {
+	for _, tc := range []struct {
+		id      int32
+		version string
+	}{{1001, "1.26.33"}, {2193, "1.26.52"}} {
+		t.Run(tc.version, func(t *testing.T) {
+			conn := negotiatedVersionConn(t, tc.id, tc.version)
+			if conn.ClientData().GameVersion != tc.version {
+				t.Fatalf("negotiated client version = %q", conn.ClientData().GameVersion)
+			}
+			out := conn.Proto().ConvertFromLatest(&packet.ResourcePackStack{BaseGameVersion: "1.26.60"}, conn)
+			got := unwrapWirePacket(out[0]).(*packet.ResourcePackStack)
+			if got.BaseGameVersion != tc.version {
+				t.Fatalf("base version = %q, want %q", got.BaseGameVersion, tc.version)
+			}
+		})
+	}
+	codec, _ := resolveProto(1001)
+	p := clientVersionProtocol{Protocol: codec}
+	out := p.ConvertFromLatest(&packet.ResourcePackStack{}, &minecraft.Conn{})
+	if got := unwrapWirePacket(out[0]).(*packet.ResourcePackStack).BaseGameVersion; got != codec.Ver() {
+		t.Fatalf("empty client version fallback = %q, want %q", got, codec.Ver())
+	}
+}
 
 const testMB = 1024 * 1024
 

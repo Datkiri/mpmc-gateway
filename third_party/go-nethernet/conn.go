@@ -825,7 +825,7 @@ func (desc description) encode() ([]byte, error) {
 	for i, candidate := range desc.candidates {
 		media.Attributes = append(media.Attributes, sdp.Attribute{
 			Key:   sdp.AttrKeyCandidate,
-			Value: formatICECandidate(i, candidate, desc.ice),
+			Value: strings.TrimPrefix(formatICECandidate(i, candidate, desc.ice), "candidate:"),
 		})
 	}
 

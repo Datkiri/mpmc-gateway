@@ -11,6 +11,27 @@ import (
 	"github.com/df-mc/go-nethernet/discovery"
 )
 
+func TestLegacyAdvertisementV5(t *testing.T) {
+	card := &discovery.ServerData{ServerName: "A", LevelName: "B", Protocol: 1001,
+		Version: "1.26.33", PlayerCount: 1, MaxPlayerCount: 10,
+		AcceptsSelfSignedAuth: true, ConnectionType: 4}
+	s := &Signaling{}
+	if err := s.SetAdvertisement(card); err != nil {
+		t.Fatal(err)
+	}
+	// Measured v5 layout: strings, game type, fixed LE counts, four bools,
+	// zigzag transport=2 and connection=4; no protocol/version/nonce fields.
+	want := []byte{5, 1, 'A', 1, 'B', 0, 1, 0, 0, 0, 10, 0, 0, 0, 0, 0, 0, 1, 4, 8}
+	got := *s.pongData.Load()
+	if !bytes.Equal(got, want) {
+		t.Fatalf("legacy advertisement bytes=%x want=%x", got, want)
+	}
+	s.PongData([]byte("MCPE;Other;2225;1.26.60;0;20;1;Other;Survival;"))
+	if !bytes.Equal(*s.pongData.Load(), want) {
+		t.Fatal("listener overwrote legacy advertisement")
+	}
+}
+
 // LAN-255: a host must BROADCAST a ResponsePacket, not merely answer a
 // RequestPacket. An offline/no-Xbox Bedrock client listens on 7551 and never
 // gets a world card if only replyRequest exists.
@@ -38,12 +59,13 @@ func TestAnnounceBroadcastsResponsePacket(t *testing.T) {
 		ConnectionType:        4,
 	}
 	s, err := Listen(Options{
-		Addr:        "127.0.0.1:0",
-		NoBroadcast: true,
-		Announce:    true,
-		Broadcasts:  []*net.UDPAddr{dst},
-		Advertise:   card,
-		Log:         log,
+		Addr:              "127.0.0.1:0",
+		NoBroadcast:       true,
+		Announce:          true,
+		Broadcasts:        []*net.UDPAddr{dst},
+		Advertise:         card,
+		DisableSharedPort: true,
+		Log:               log,
 	})
 	if err != nil {
 		t.Fatal(err)

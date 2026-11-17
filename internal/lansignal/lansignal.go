@@ -20,10 +20,13 @@
 package lansignal
 
 import (
+	"bytes"
 	"context"
+	"encoding/binary"
 	"fmt"
 	"log/slog"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 	"sync"
@@ -144,6 +147,12 @@ type Options struct {
 	// e.g. 255.255.255.255:7551 and 192.168.1.255:7551, instead of also
 	// emitting cards from virtual WSL/Hyper-V interfaces.
 	Broadcasts []*net.UDPAddr
+	// DisableSharedPort prevents opening a second SO_REUSEADDR socket on UDP
+	// 7551 when Addr is an ephemeral/dedicated signaling port. A relay that
+	// advertises from 8555 must leave 7551 exclusively to the native client:
+	// Windows may deliver the client's unicast CONNECTRESPONSE there to the
+	// relay's shared socket instead of the client's Minecraft socket.
+	DisableSharedPort bool
 }
 
 // networkIDSeed guarantees unique network IDs for Signaling instances created
@@ -238,11 +247,13 @@ func Listen(opts Options) (*Signaling, error) {
 		go s.announceLoop()
 	}
 	go s.expireLoop()
-	// ★ Also listen on port 7551 through a SO_REUSEADDR socket. Needed when we have to bind an
-	// ephemeral port because the host application already holds 7551: such a world does NOT answer
-	// unicast probes, it BROADCASTS a ResponsePacket to 255.255.255.255:7551. An ephemeral socket
-	// never receives datagrams addressed to port 7551, so that port must be bound as well.
-	go s.readSharedLoop()
+	// Also listen on port 7551 through a SO_REUSEADDR socket when discovery
+	// announcements must be observed from an ephemeral primary socket. A relay
+	// using a dedicated signaling port deliberately disables this: native
+	// clients must own 7551 for their unicast signaling replies.
+	if !opts.DisableSharedPort {
+		go s.readSharedLoop()
+	}
 	return s, nil
 }
 
@@ -335,12 +346,54 @@ func (s *Signaling) SetAdvertisement(d *discovery.ServerData) error {
 		return fmt.Errorf("nil ServerData")
 	}
 	raw, err := d.MarshalBinary()
+	if d.Protocol == 1001 {
+		// 1.26.33 uses the measured v5 layout (see decodeV5). Changing the
+		// version string inside a v7 advertisement does not make it compatible.
+		raw, err = marshalAdvertisementV5(d)
+	}
 	if err != nil {
 		return fmt.Errorf("marshal LAN ServerData: %w", err)
 	}
 	s.advertise.Store(&raw)
 	s.pongData.Store(&raw)
 	return nil
+}
+
+func marshalAdvertisementV5(d *discovery.ServerData) ([]byte, error) {
+	if d.Nonce != "" {
+		return nil, fmt.Errorf("ServerData v5 cannot carry a nonce")
+	}
+	var buf bytes.Buffer
+	buf.WriteByte(5)
+	writeU := func(v uint32) {
+		for v >= 0x80 {
+			buf.WriteByte(byte(v) | 0x80)
+			v >>= 7
+		}
+		buf.WriteByte(byte(v))
+	}
+	writeI := func(v int32) { writeU(uint32(v<<1) ^ uint32(v>>31)) }
+	writeS := func(v string) { writeU(uint32(len(v))); buf.WriteString(v) }
+	writeB := func(v bool) {
+		if v {
+			buf.WriteByte(1)
+		} else {
+			buf.WriteByte(0)
+		}
+	}
+	writeS(d.ServerName)
+	writeS(d.LevelName)
+	writeI(d.GameType)
+	// bytes.Buffer writes cannot fail.
+	_ = binary.Write(&buf, binary.LittleEndian, d.PlayerCount)
+	_ = binary.Write(&buf, binary.LittleEndian, d.MaxPlayerCount)
+	writeB(d.EditorWorld)
+	writeB(d.Hardcore)
+	writeB(d.AcceptsOnlineAuth)
+	writeB(d.AcceptsSelfSignedAuth)
+	writeI(2) // NetherNet transport in the v5 layout.
+	writeI(d.ConnectionType)
+	return buf.Bytes(), nil
 }
 
 // serverDataFromPong converts gophertunnel's MCPE pong line into the binary
@@ -513,6 +566,9 @@ func (s *Signaling) Signal(ctx context.Context, signal *nethernet.Signal) error 
 	}
 	s.log.Debug("lansignal: sent signal",
 		"to", addr, "network_id", id, "type", signal.Type, "conn", signal.ConnectionID)
+	if os.Getenv("XVER_SIGNAL_TRACE") == "1" {
+		s.log.Info("lansignal: trace sent", "to", addr, "type", signal.Type, "conn", signal.ConnectionID, "bytes", len(signal.Data))
+	}
 	return nil
 }
 
@@ -757,6 +813,9 @@ func (s *Signaling) replyRequest(addr net.Addr) {
 
 // deliver hands a signal to every registered notifier.
 func (s *Signaling) deliver(signal *nethernet.Signal) {
+	if os.Getenv("XVER_SIGNAL_TRACE") == "1" {
+		s.log.Info("lansignal: trace received", "network_id", signal.NetworkID, "type", signal.Type, "conn", signal.ConnectionID, "bytes", len(signal.Data))
+	}
 	s.log.Debug("lansignal: received signal",
 		"from_network_id", signal.NetworkID, "type", signal.Type, "conn", signal.ConnectionID)
 	s.notifiersMu.RLock()

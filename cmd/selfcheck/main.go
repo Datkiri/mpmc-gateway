@@ -12,6 +12,7 @@ package main
 
 import (
 	"context"
+	"crypto/ecdsa"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -364,6 +365,12 @@ type lanNetwork struct {
 
 func (n lanNetwork) DialContext(ctx context.Context, _ string) (net.Conn, error) {
 	return n.NetherNet.DialContext(ctx, n.networkID)
+}
+
+// Native 2225 prefers identity-aware dialing; preserve the discovery network ID
+// on this path too, instead of passing ClientData.ServerAddress to signaling.
+func (n lanNetwork) DialContextIdentity(ctx context.Context, _ string, token string, privateKey *ecdsa.PrivateKey) (net.Conn, error) {
+	return n.NetherNet.DialContextIdentity(ctx, n.networkID, token, privateKey)
 }
 
 // isLocalDiscoveryAddr reports whether a LAN peer answered from this machine's

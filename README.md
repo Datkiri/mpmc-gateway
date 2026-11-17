@@ -43,6 +43,18 @@ This project is an experiment in doing exactly that, out in the open:
 - keep everything else as close to "just forward the bytes" as possible, so behaviour stays
   predictable and failures are visible in the log instead of silently corrupting the world.
 
+## Native 1.26.33 → BDS 1.26.60 verification (2026-11-17)
+
+The user confirmed successful play with the native Bedrock 1.26.33 client through the LAN relay into BDS 1.26.60.6. This is a manual play confirmation for that path, not a complete gameplay regression or proof for every protocol pair.
+
+The fixes use the measured ServerData v5 advertisement for protocol 1001, remove the duplicate `candidate:` prefix from inline SDP candidates, keep a dedicated ingress signaling socket from also binding the client's UDP 7551, and normalize `ResourcePackStack.BaseGameVersion` to the negotiated client version. Only the incompatible built-in texture pack UUID `d34cfa4b-2ad1-453d-a0db-668b429a3ea0` at version `1.26.40` is removed for protocol 1001; custom packs remain intact. The selfcheck identity-aware dial path retains the discovered network ID.
+
+The existing `joiner_new.exe` custom client also discovered the v5 card, completed ICE/DTLS and login using protocol 1001 / version 1.26.33, spawned, and stayed connected for 20 seconds. Local evidence: `D:/tmp/xver-custom1001-native-ice.log` and `D:/tmp/xver-native-ice-server.log`; these runtime logs are not shipped in the source repository. The tested local relay artifact is `D:/tmp/xver-native-ice-fixed.exe`, SHA-256 `743c4d94cd74a11111ce29bb67f2bd136599e903783ef7c568d5d9e6d0c751f8`.
+
+Test topology: native/custom client → LAN signaling UDP 8555 (broadcast destination UDP 7551) → NetherNet ingress → xver → RakNet `127.0.0.1:19132` → BDS 1.26.60.6. The isolated lab BDS uses `online-mode=false`; this does not change the raw mpmc tunnel or its gateway licensing boundary.
+
+Expansion requested for `1.26.7x`, `1.26.2x`, `1.26.1x`, `1.26.x`, `1.21.1xx`, and `1.21.x` is **pending implementation and version-specific custom-client verification**. These ranges must not be inferred to work from the five codec families below.
+
 ## Supported versions
 
 Protocol IDs, not marketing versions — a build can share a protocol ID and still differ in registries.

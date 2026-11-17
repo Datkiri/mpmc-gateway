@@ -660,6 +660,26 @@ func (p clientVersionProtocol) ConvertToLatest(pk packet.Packet, conn *minecraft
 // block IDs on the way OUT (UpdateBlock / LevelEvent / ItemStack.BlockRuntimeID).
 // See scrubHashedBlockIDs for the measurements.
 func (p clientVersionProtocol) ConvertFromLatest(pk packet.Packet, conn *minecraft.Conn) (out []packet.Packet) {
+	if stack, ok := pk.(*packet.ResourcePackStack); ok {
+		// The listener creates this before a host session exists. Its native
+		// version and built-in packs must not leak into an older client's login.
+		version := p.Protocol.Ver()
+		if conn != nil && conn.ClientData().GameVersion != "" {
+			version = conn.ClientData().GameVersion
+		}
+		cloned := *stack
+		cloned.BaseGameVersion = version
+		cloned.TexturePacks = make([]protocol.StackResourcePack, 0, len(stack.TexturePacks))
+		for _, pack := range stack.TexturePacks {
+			// Added to the native listener in 1.26.40, absent from 1001's
+			// built-in pack registry. Preserve all actual/custom packs.
+			if p.Protocol.ID() == 1001 && pack.UUID == "d34cfa4b-2ad1-453d-a0db-668b429a3ea0" && pack.Version == "1.26.40" {
+				continue
+			}
+			cloned.TexturePacks = append(cloned.TexturePacks, pack)
+		}
+		return p.Protocol.ConvertFromLatest(&cloned, conn)
+	}
 	// conn == nil is the codec-only path (unit tests / verifyRoundTrip): there is
 	// no GameData to consult, so the protocol-independent hashed representation
 	// is assumed. In production conn is the client conn and gameData is the
@@ -3097,11 +3117,12 @@ func main() {
 			// unicast ones, so announcing from 7551 could hand the client's
 			// OFFER to Overlix instead of to us.
 			opts = lansignal.Options{
-				Addr:       fmt.Sprintf("%s:%d", *lanSignalIP, *lanSignalPort),
-				Log:        slog.Default(),
-				Announce:   true,
-				Broadcasts: lanIngress.Broadcasts,
-				Advertise:  lanIngress.Advertise,
+				Addr:              fmt.Sprintf("%s:%d", *lanSignalIP, *lanSignalPort),
+				Log:               slog.Default(),
+				Announce:          true,
+				Broadcasts:        lanIngress.Broadcasts,
+				Advertise:         lanIngress.Advertise,
+				DisableSharedPort: *lanSignalPort != lansignal.DefaultPort,
 			}
 		}
 		ls, err = lansignal.Listen(opts)

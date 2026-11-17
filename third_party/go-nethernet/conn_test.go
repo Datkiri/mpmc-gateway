@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"net"
+	"strings"
 	"testing"
 
 	"github.com/pion/sdp/v3"
@@ -223,6 +224,27 @@ func TestTypePreference(t *testing.T) {
 		if got := typePreference(webrtc.ICECandidate{Typ: test.candidateType}); got != test.want {
 			t.Errorf("typePreference(%s) = %d, want %d", test.candidateType, got, test.want)
 		}
+	}
+}
+
+func TestDescriptionCandidateAttributeHasSinglePrefix(t *testing.T) {
+	candidate := webrtc.ICECandidate{Foundation: "123", Protocol: webrtc.ICEProtocolUDP,
+		Component: 1, Typ: webrtc.ICECandidateTypeHost, Address: "192.0.2.1", Port: 40000, Priority: 1234}
+	desc := description{ice: webrtc.ICEParameters{UsernameFragment: "test", Password: "test-password"},
+		dtls:       webrtc.DTLSParameters{Fingerprints: []webrtc.DTLSFingerprint{{Algorithm: "sha-256", Value: "test"}}},
+		candidates: []webrtc.ICECandidate{candidate}}
+	data, err := desc.encode()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if strings.Contains(string(data), "a=candidate:candidate:") {
+		t.Fatal("duplicate candidate prefix in SDP")
+	}
+	if !strings.Contains(string(data), "a=candidate:123 1 udp ") {
+		t.Fatalf("missing candidate attribute: %s", data)
+	}
+	if !strings.HasPrefix(formatICECandidate(0, candidate, desc.ice), "candidate:123 ") {
+		t.Fatal("standalone candidate must retain prefix")
 	}
 }
 

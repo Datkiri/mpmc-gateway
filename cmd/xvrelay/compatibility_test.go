@@ -21,9 +21,17 @@ import (
 // No external game or Xbox service is used by these loopback tests.
 func negotiatedConn(t *testing.T, id int32) *minecraft.Conn {
 	t.Helper()
+	return negotiatedVersionConn(t, id, "")
+}
+
+func negotiatedVersionConn(t *testing.T, id int32, version string) *minecraft.Conn {
+	t.Helper()
 	codec, ok := resolveProto(id)
 	if !ok {
 		t.Fatalf("unknown test protocol %d", id)
+	}
+	if version == "" {
+		version = codec.Ver()
 	}
 	l, err := (minecraft.ListenConfig{AuthenticationDisabled: true, AcceptedProtocols: []minecraft.Protocol{wrapClientVersion(codec, false)}}).Listen("raknet", "127.0.0.1:0")
 	if err != nil {
@@ -33,7 +41,7 @@ func negotiatedConn(t *testing.T, id int32) *minecraft.Conn {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	t.Cleanup(cancel)
 	go func() {
-		c, err := (minecraft.Dialer{Protocol: codec, ClientData: login.ClientData{GameVersion: codec.Ver()}, IdentityData: login.IdentityData{DisplayName: "CodecTest"}}).DialContext(ctx, "raknet", l.Addr().String())
+		c, err := (minecraft.Dialer{Protocol: codec, ClientData: login.ClientData{GameVersion: version}, IdentityData: login.IdentityData{DisplayName: "CodecTest"}}).DialContext(ctx, "raknet", l.Addr().String())
 		if err == nil {
 			_ = c.Close()
 		}
