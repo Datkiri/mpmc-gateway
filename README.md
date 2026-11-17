@@ -5,6 +5,16 @@ bạn qua Internet **mà không cần mở port, không cần VPS host game, kh�
 
 MVP hoàn tất đến M5 (Java↔Java); M6 thêm **Java client → server Bedrock** qua ViaProxy chạy phía host.
 
+## Xver Bedrock LAN — đã chơi thử 17/11/2026
+
+Người dùng xác nhận **client Bedrock gốc 1.26.33 chơi thành công qua xver vào BDS 1.26.60.6**. Source Go nằm ở nhánh [`xver-relay`](https://github.com/Datkiri/mpmc-gateway/tree/xver-relay) của chính repository này.
+
+Bản sửa gồm advertisement ServerData v5 đúng cho protocol 1001, SDP ICE candidate không lặp tiền tố, ingress signaling 8555 không chiếm thêm UDP 7551 của client, resource-pack stack theo version client và selfcheck giữ network ID khi dial có identity. Custom client có sẵn `joiner_new.exe` đã join/spawn bằng protocol 1001 / version 1.26.33 và giữ kết nối 20 giây. Bằng chứng runtime giữ cục bộ ở `D:/tmp/xver-custom1001-native-ice.log`, `D:/tmp/xver-native-ice-server.log`; không đưa token hay binary BDS lên GitHub.
+
+Đường đi đã test: client → thẻ LAN broadcast tới UDP 7551 → signaling UDP 8555 → xver → RakNet `127.0.0.1:19132` → BDS 1.26.60.6. BDS offline chỉ dùng trong lab đã được cho phép. Đây là xác nhận chơi thực tế của đường 1.26.33 → 1.26.60, chưa phải kết luận toàn bộ gameplay hoặc mọi cặp phiên bản.
+
+Các họ `1.26.7x`, `1.26.2x`, `1.26.1x`, `1.26.x`, `1.21.1xx`, `1.21.x` đang được yêu cầu mở rộng; **chưa đánh dấu hỗ trợ** trước khi có codec/registry đúng và test custom client từng phiên bản. Ranh giới raw transport / GPL gateway và quy tắc không nhúng ViaProxy/ViaBedrock vào ZIP agent vẫn giữ nguyên. Xem thêm [PUSH-README.md](PUSH-README.md).
+
 ## Cách hoạt động
 
 ```

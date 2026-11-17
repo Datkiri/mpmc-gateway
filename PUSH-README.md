@@ -15,6 +15,14 @@ Cả hai chiều đều **đo bằng log/packet capture thật**, không chỉ c
 Ranh giới `[Chưa xác minh]` nêu rõ ở cuối file này và trong `docs/M6-BEDROCK.md`.
 Repo gồm 2 nhánh: `main` = snapshot/docs/bằng chứng, `xver-relay` = lịch sử Go relay.
 
+## Xver native 1.26.33 → BDS 1.26.60 (17/11/2026)
+
+Người dùng xác nhận đã chơi thành công với client gốc 1.26.33 qua NetherNet LAN vào BDS 1.26.60.6. Custom client `joiner_new.exe` cũng join/spawn protocol 1001, version 1.26.33 và giữ kết nối 20 giây. Log cục bộ: `D:/tmp/xver-custom1001-native-ice.log`, `D:/tmp/xver-native-ice-server.log`.
+
+Artifact đã test: `xver-native-ice-fixed.exe`, SHA-256 `743c4d94cd74a11111ce29bb67f2bd136599e903783ef7c568d5d9e6d0c751f8`. Source trên nhánh `xver-relay` gồm sửa advertisement v5, SDP candidate, dedicated signaling socket, resource-pack version/built-in pack tương thích và identity-aware selfcheck. Signaling UDP 8555, broadcast tới UDP 7551; upstream BDS RakNet `127.0.0.1:19132`. Xác nhận này áp dụng đúng đường 1.26.33 → 1.26.60; chưa xác minh toàn bộ gameplay hoặc mọi cặp codec.
+
+Các họ 1.26.7x / 1.26.2x / 1.26.1x / 1.26.x / 1.21.1xx / 1.21.x là phạm vi mở rộng tiếp theo, chưa tuyên bố hỗ trợ. Bản kiểm chứng trước ở protocol 2225 và chiều Bedrock → Java dưới đây giữ nguyên giới hạn lịch sử của nó.
+
 ## Nội dung
 
 | Đường dẫn | Ý nghĩa |
