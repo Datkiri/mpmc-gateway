@@ -21,7 +21,11 @@ Người dùng xác nhận đã chơi thành công với client gốc 1.26.33 qu
 
 Artifact đã test: `xver-native-ice-fixed.exe`, SHA-256 `743c4d94cd74a11111ce29bb67f2bd136599e903783ef7c568d5d9e6d0c751f8`. Source trên nhánh `xver-relay` gồm sửa advertisement v5, SDP candidate, dedicated signaling socket, resource-pack version/built-in pack tương thích và identity-aware selfcheck. Signaling UDP 8555, broadcast tới UDP 7551; upstream BDS RakNet `127.0.0.1:19132`. Xác nhận này áp dụng đúng đường 1.26.33 → 1.26.60; chưa xác minh toàn bộ gameplay hoặc mọi cặp codec.
 
-Các họ 1.26.7x / 1.26.2x / 1.26.1x / 1.26.x / 1.21.1xx / 1.21.x là phạm vi mở rộng tiếp theo, chưa tuyên bố hỗ trợ. Bản kiểm chứng trước ở protocol 2225 và chiều Bedrock → Java dưới đây giữ nguyên giới hạn lịch sử của nó.
+Đợt mở rộng đã tích hợp thêm protocol `748/766/827/844/898/924/944/975` với registry block/item native 2225, nâng tổng số họ codec lên 13. Custom client độc lập đọc item table 748/766 từ byte StartGame nhận thật. Bản relay cuối PASS 14/14 phiên 5 giây trên BDS 1.26.60.6: `1.21.40`, `.44`, `.51`, `.102`, `.114`, `.132`; `1.26.3`, `.14`, `.23`, `.36`, `.44`, `.45`, `.52`, `.60`. Mỗi phiên: 385 LevelChunk, registry khớp, 99–100 PlayerAuthInput, 0 decode/send error, 0 AIR loss quan sát được, 0 item ID lạ. Báo cáo cục bộ: `D:/tmp/xver-final-census-matrix.json`.
+
+Đã chạy thêm 20 alias còn lại của 8 họ mới: 18 PASS ngay; `1.26.2` và `1.26.11` có 1 send error lúc quit ở lần đầu, retest riêng 3,5 giây đều PASS với 0 decode/send error. Giữ nguyên bằng chứng lỗi ban đầu tại `D:/tmp/xver-final-alias-matrix.json`; nguyên nhân shutdown chưa chốt. Cả 29 alias historical đều có phiên custom client thành công.
+
+Số đo này xác minh login/spawn và dữ liệu wire; chưa xác minh host chấp nhận movement, đặt/đào block, inventory mutation hay entity interaction. Historical host còn thử nghiệm vì adapter có thể nhầm hash block ID với palette index; không tuyên bố mọi cặp codec. Chưa có adapter xác minh `1.26.7x`, chưa phủ toàn bộ `1.21.x`; `1.21.42` bị loại theo pinned adapter. README nhánh `xver-relay` ghi đủ alias, số đo từng phiên và giới hạn. Bản kiểm chứng cũ bên dưới giữ nguyên phạm vi lịch sử.
 
 ## Nội dung
 

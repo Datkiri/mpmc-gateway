@@ -13,7 +13,7 @@ Bản sửa gồm advertisement ServerData v5 đúng cho protocol 1001, SDP ICE 
 
 Đường đi đã test: client → thẻ LAN broadcast tới UDP 7551 → signaling UDP 8555 → xver → RakNet `127.0.0.1:19132` → BDS 1.26.60.6. BDS offline chỉ dùng trong lab đã được cho phép. Đây là xác nhận chơi thực tế của đường 1.26.33 → 1.26.60, chưa phải kết luận toàn bộ gameplay hoặc mọi cặp phiên bản.
 
-Các họ `1.26.7x`, `1.26.2x`, `1.26.1x`, `1.26.x`, `1.21.1xx`, `1.21.x` đang được yêu cầu mở rộng; **chưa đánh dấu hỗ trợ** trước khi có codec/registry đúng và test custom client từng phiên bản. Ranh giới raw transport / GPL gateway và quy tắc không nhúng ViaProxy/ViaBedrock vào ZIP agent vẫn giữ nguyên. Xem thêm [PUSH-README.md](PUSH-README.md).
+Đã tích hợp thêm 8 họ protocol `748/766/827/844/898/924/944/975`, nâng tổng số codec chọn được lên 13. Bản relay cuối đã PASS 14 phiên custom client trên BDS 1.26.60.6: `1.21.40`, `.44`, `.51`, `.102`, `.114`, `.132`; `1.26.3`, `.14`, `.23`, `.36`, `.44`, `.45`, `.52`, `.60`. Mỗi phiên nhận 385 LevelChunk, registry khớp, 0 lỗi decode/send và 0 item ID không nhận diện. Đây là xác minh login/spawn/chunk/item wire, chưa chứng minh đặt/đào block hay thay đổi inventory được host chấp nhận. Chiều historical host còn thử nghiệm do giới hạn hash block ID. Chưa có adapter xác minh cho `1.26.7x`; không tuyên bố toàn bộ `1.21.x` hoặc mọi cặp phiên bản. Bằng chứng cục bộ: `D:/tmp/xver-final-census-matrix.json`. Ranh giới raw transport / GPL gateway vẫn giữ nguyên. Xem README nhánh `xver-relay` và [PUSH-README.md](PUSH-README.md).
 
 ## Cách hoạt động
 
