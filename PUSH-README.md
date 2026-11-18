@@ -113,6 +113,6 @@ Branch `xver-relay` chứa `third_party/` (gophertunnel/go-nethernet fork) và
 - ~~`Datkiri/bedrock-cross-version-relay`~~: repo công khai cũ đã biến mất, repo private
   tạo lại nhầm **đã xóa 12/11** (`gh api` 404). **Không tạo lại.** Commit local giữ nguyên.
 - `Datkiri/mpmc-gateway` là **repo duy nhất** được phép: `main` = snapshot này,
-  `xver-relay` = lịch sử Go relay (HEAD `59258f0`, sau commit lịch sử LAN-255 `59b350a`).
+  `xver-relay` = lịch sử Go relay (HEAD `d6948bb`, sau commit lịch sử LAN-255 `59b350a`).
 - Base fork: ViaBedrock `3756cc0`, ViaProxy `1cc5364`.
 - Commit local: ViaBedrock `8e5162e`, ViaProxy `bd4af0a` (branch `mpmc.18`).
