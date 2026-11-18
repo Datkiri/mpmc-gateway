@@ -127,6 +127,10 @@ var (
 	// identityMode: "auto" = forward the client's REAL IdentityData to the host (name + XUID),
 	// "bot" = legacy behaviour (gophertunnel fills in "Steve") — A/B testing only.
 	identityMode = "auto"
+	// hostLegacyAuth: use the legacy offline JWT chain required by older BDS builds
+	// (1.21.x / early 1.26.x). Those hosts reject the modern self-signed chain with
+	// disconnectionScreen.notAuthenticated. Off by default for modern hosts.
+	hostLegacyAuth bool
 	// dropChunks: drop LevelChunk/SubChunk on the way to the client — used to BISECT whether
 	// the client dies because of chunks or because of another packet.
 	dropChunks bool
@@ -2303,6 +2307,7 @@ func dialHostWith(ctx context.Context, ls *lansignal.Signaling, id uint64, cd lo
 	d := minecraft.Dialer{
 		EnableClientCache:   false, // rewritten chunk bytes must not retain host blob hashes
 		KeepXBLIdentityData: true,  // keep XUID/TitleID in the token sent to the host
+		EnableLegacyAuth:    hostLegacyAuth,
 		IdentityData:        identity,
 		ClientData:          cd,
 		Protocol:            hostCodec,
@@ -2975,6 +2980,7 @@ func main() {
 	flag.StringVar(&startGameMode, "startgame", "raw", "raw (replay host bytes verbatim when the wire matches) | rebuild")
 	flag.StringVar(&dimDataMode, "dimdata", "auto", "DimensionData: auto/off (keep the host's data) | force (diagnostic: inject a synthetic table)")
 	flag.StringVar(&identityMode, "identity", "auto", "identity sent to the host: auto (the client's real name + XUID) | bot (the host sees Steve)")
+	flag.BoolVar(&hostLegacyAuth, "host-legacy-auth", false, "use the legacy offline JWT chain required by older BDS hosts (1.21.x / early 1.26.x)")
 	probe := flag.Bool("probe", false, "dial the world once and exit (diagnostic, no client needed)")
 	probeXUID := flag.String("probe-xuid", "", "fake XUID used with -probe (empty = send no XUID)")
 	probeVersion := flag.String("probe-version", "", "fake GameVersion used with -probe (empty = proto.Ver())")

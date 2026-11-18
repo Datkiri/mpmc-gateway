@@ -64,7 +64,8 @@ type config struct {
 	noSubchunk   bool
 	inputFlags   bool
 	noFail       bool
-	itemLog      int // max item log lines; 0 = none, <0 = unlimited
+	legacyAuth   bool // use the legacy offline JWT chain required by older BDS builds
+	itemLog      int  // max item log lines; 0 = none, <0 = unlimited
 	// liveItemRegistry resolves wire item runtime IDs against the registry the
 	// SERVER declared (GameData.Items) instead of the pinned protocol table.
 	// Needed for servers that inject custom items, e.g. Geyser's custom blocks.
@@ -390,6 +391,7 @@ func run() int {
 		noSubchunk   = flag.Bool("no-subchunk", false, "disable SubChunkRequest (bisect)")
 		inputFlags   = flag.Bool("input-flags", false, "set jump/sneak/sprint flags in PlayerAuthInput (bisect)")
 		noFail       = flag.Bool("nofail", false, "always exit 0 even when assertions fail (bisect)")
+		legacyAuth   = flag.Bool("legacy-auth", false, "use the legacy offline JWT chain required by older BDS builds (1.21.x / early 1.26.x)")
 		itemLog      = flag.Int("item-log", 24, "max ITEM_VISIBLE/ITEM_LOST/ITEM_UNKNOWN_ID log lines (0 = off, <0 = all)")
 		liveItems    = flag.Bool("live-item-registry", false, "resolve item IDs against the server's declared GameData (for Geyser/custom-item servers); item_registry then requires the pinned table to be a subset")
 	)
@@ -411,6 +413,7 @@ func run() int {
 		noSubchunk:       *noSubchunk,
 		inputFlags:       *inputFlags,
 		noFail:           *noFail,
+		legacyAuth:       *legacyAuth,
 		itemLog:          *itemLog,
 		liveItemRegistry: *liveItems,
 	}

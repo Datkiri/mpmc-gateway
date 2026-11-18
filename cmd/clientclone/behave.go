@@ -250,6 +250,7 @@ func (s *session) join(addr string, direct bool, protoOverride int32, nameOverri
 		Protocol:                   codec,
 		ClientData:                 profile,
 		IdentityData:               login.IdentityData{DisplayName: s.name, Identity: uuid.New().String()},
+		EnableLegacyAuth:           s.cfg.legacyAuth,
 		DisconnectOnUnknownPackets: false,
 		ErrorLog:                   slog.New(s.errCounter),
 	}

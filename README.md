@@ -86,9 +86,33 @@ A full host × client cross-matrix then ran the same independent client against 
 
 The 1.26.33.1 test BDS was configured with `transport=nethernet`, so its UDP 19132 is a NetherNet signalling socket and does not answer RakNet dials: all 13 sessions initially timed out at dial before reaching any codec. Switching that test BDS to `transport=raknet` produced the 13/13 results above; its original `server.properties` was restored afterward. This is a host configuration constraint, not a codec defect, and the failed first run is preserved in `D:/tmp/xver-matrix-bds-1.26.33-relay.log` and `D:/tmp/xver-matrix-full-results.json`.
 
+### Full 13-host × 13-client matrix (2026-11-18)
+
+Ten previously missing BDS versions were downloaded from Mojang's archived Windows server zips (index: `bedrock-server-downloads.json`) and installed under `D:/tmp/bds-hosts/`, each on a unique RakNet port with `online-mode=false`. The relay was then run once per host protocol and all 13 selectable client protocols were connected against it: **169 pairings**. Aggregate: `D:/tmp/xver-allmatrix-results.json`; per-session reports `D:/tmp/xver-allmatrix-<host>-c<client>.json`; console `D:/tmp/xver-allmatrix-console.log`.
+
+| Host protocol | BDS version | Passing client pairs | Note |
+| --- | --- | --- | --- |
+| `748` | 1.21.40.03 | 12/13 | needs `-host-legacy-auth`; only client `2225` fails `items_no_unknown_id` (49) |
+| `766` | 1.21.50.10 | 12/13 | legacy auth; only client `2225` fails `items_no_unknown_id` (49) |
+| `827` | 1.21.100.7 | 0/13 | BDS sends `DisconnectReasonBadPacket` (90) at Login |
+| `844` | 1.21.111.1 | 0/13 | same Login reject as `827` |
+| `898` | 1.21.130.4 | 0/13 | same Login reject as `827` |
+| `924` | 1.26.0.2 | 0/13 | same Login reject as `827` |
+| `944` | 1.26.10.4 | 0/13 | same Login reject as `827` |
+| `975` | 1.26.20.5 | 0/13 | same Login reject as `827` |
+| `1001` | 1.26.33.1 | 13/13 | modern auth |
+| `2168` | 1.26.40.8 | 12/13 | only client `2225` fails `items_no_unknown_id` (1) |
+| `2169` | 1.26.45.1 | 12/13 | only client `2225` fails `items_no_unknown_id` (1) |
+| `2193` | 1.26.51.1 | 13/13 | modern auth |
+| `2225` | 1.26.60.6 | 13/13 | native |
+
+Total: **87 of 169 pairings pass**. The six mid-generation host builds (protocols 827–975) reject the vendored 2225 gophertunnel Login with `DisconnectReasonBadPacket` (reason code 90, empty message) before any relay codec runs. This was confirmed with a debug client that logs the raw reason code: `D:/tmp/xver-dbg827-*.log`, decode via `packet.DisconnectReasonBadPacket == 90`. Both modern and legacy offline JWT chains were tried, plus a matching 1.21.102.1 rebuild and a protocol brute force (748…2225) — every attempt returns reason 90 or `server/client outdated`. This is a genuine host-side limitation of those BDS builds against the pinned login encoder, not a block/palette translation result. It is source-proven and needs a separate login-encoding fix; do not claim those six hosts work.
+
+The passing pairs still only verify login/spawn, delivered chunks, received item identities and packet writes — not gameplay effects. For historical hosts that need it, the relay flag `-host-legacy-auth` and the client flag `-legacy-auth` switch to the legacy offline JWT chain; both default off.
+
 These measurements cover login/spawn, delivered chunks, received item identities and packet writes. They do not establish rendered terrain correctness, accepted movement, successful placement/breaking, inventory mutation or entity interaction. Zero observed AIR loss also does not mean every native item exists in the older game: unsupported entries can be omitted before reaching the client.
 
-Historical-host conversion remains **experimental**. A host-side codec guard now protects hashed gameplay block IDs in both directions while leaving numeric palette translation enabled. Regression tests cover `UpdateBlock` in hashed/numeric modes across twelve non-native families, plus optional storage stacks and falling-block variant metadata in both directions with positive/negative hashes. They check item-ID translation and input restoration; a panic-path test checks restoration without modifying shared metadata. `StartGame` uses its own hash-mode flag before connection data is populated, and the protocol-1001 host fixes remain nested inside the guard. These are codec tests. The live custom-client sessions above now cover both a native 2225 host and a historical 1001 host, but verify only login/spawn, delivered chunks, received item identities and packet writes — not gameplay effects. Legacy host item tables, incomplete incoming semantic mappings, stack-request craft-result serialization and opaque chunk payloads still need validation. Only two host protocols were available locally; the other eleven historical host families have no live host test. Do not infer all-pairs compatibility.
+Historical-host conversion remains **experimental**. A host-side codec guard now protects hashed gameplay block IDs in both directions while leaving numeric palette translation enabled. Regression tests cover `UpdateBlock` in hashed/numeric modes across twelve non-native families, plus optional storage stacks and falling-block variant metadata in both directions with positive/negative hashes. They check item-ID translation and input restoration; a panic-path test checks restoration without modifying shared metadata. `StartGame` uses its own hash-mode flag before connection data is populated, and the protocol-1001 host fixes remain nested inside the guard. These are codec tests. The live custom-client sessions above now cover seven host protocols (748, 766, 1001, 2168, 2169, 2193, 2225), but verify only login/spawn, delivered chunks, received item identities and packet writes — not gameplay effects. Six historical host families (827, 844, 898, 924, 944, 975) have no working live host path because their BDS builds reject the pinned login encoder. Legacy host item tables, incomplete incoming semantic mappings, stack-request craft-result serialization and opaque chunk payloads still need validation. Do not infer all-pairs compatibility.
 
 There is no verified `1.26.7x` adapter in the pinned dependency. Early/intermediate `1.21.x` families absent from the table remain unsupported. `1.21.42` is excluded by the pinned adapter. Broad ranges requested by the user are only partially covered by the explicit aliases below.
 
@@ -399,6 +423,7 @@ than reusing the `2168` codec.
 | `-timeout` | `20s` | LAN discovery window |
 | `-client-proto` | `auto` | force the client-side protocol (`748`/`766`/`827`/`844`/`898`/`924`/`944`/`975`/`1001`/`2168`/`2169`/`2193`/`2225`); `auto` accepts all thirteen |
 | `-host-proto` | `auto` | force the host-side protocol (`748`/`766`/`827`/`844`/`898`/`924`/`944`/`975`/`1001`/`2168`/`2169`/`2193`/`2225`) |
+| `-host-legacy-auth` | `false` | use the legacy offline JWT chain needed by some older BDS hosts (e.g. 1.21.40/1.21.50) that reject the modern self-signed chain |
 | `-host-raknet` | *(off)* | dial the host directly over RakNet (`host:port`), skipping LAN discovery — for a BDS with `transport=raknet` and the self-check harness |
 | `-map-gameplay-items` | `true` | build historical registry-aware codecs (`748`/`766`/`827`/`844`/`898`/`924`/`944`/`975`/`1001`/`2168`/`2169`/`2193`) with `NewWithRegistries` so supported item IDs inside gameplay packets are translated; `false` restores plain `New()` for bisect |
 | `-trace` | `40` | print the first N packet names per direction, `0` = off |
