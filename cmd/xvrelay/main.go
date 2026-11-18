@@ -2284,9 +2284,7 @@ func dialHostWith(ctx context.Context, ls *lansignal.Signaling, id uint64, cd lo
 	if !ok {
 		return nil, fmt.Errorf("no codec for host protocol %d", protoID)
 	}
-	if protoID == 1001 {
-		proto = host1001Protocol{Protocol: proto}
-	}
+	proto = wrapHostProtocol(proto)
 
 	// CONN-005: ONE guard per dial (sessions can spawn concurrently). packCtx is the
 	// parent of the dial context, so the guard can abort the DialContext wait on spawn

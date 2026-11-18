@@ -2,6 +2,7 @@ package main
 
 import (
 	"log/slog"
+	"maps"
 	"reflect"
 	"strconv"
 	"strings"
@@ -12,6 +13,66 @@ import (
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 )
+
+// wrapHostProtocol retains host-specific wire fixes inside the hash guard, so
+// every production host read/write uses the same block-ID representation gate.
+func wrapHostProtocol(p minecraft.Protocol) minecraft.Protocol {
+	if p.ID() == 1001 {
+		p = host1001Protocol{Protocol: p}
+	}
+	return hostBlockProtocol{Protocol: p}
+}
+
+type hostBlockProtocol struct{ minecraft.Protocol }
+
+func hostUsesBlockHashes(pk packet.Packet, conn *minecraft.Conn) bool {
+	// StartGame is converted before handleStartGame has populated GameData.
+	if start, ok := unwrapWirePacket(pk).(*packet.StartGame); ok {
+		return start.UseBlockNetworkIDHashes
+	}
+	// Offline codec callers follow the existing client guard's hash convention.
+	return conn == nil || conn.GameData().UseBlockNetworkIDHashes
+}
+
+func (p hostBlockProtocol) ConvertToLatest(pk packet.Packet, conn *minecraft.Conn) []packet.Packet {
+	return convertHostBlockIDs(pk, hostUsesBlockHashes(pk, conn), func() []packet.Packet {
+		return p.Protocol.ConvertToLatest(pk, conn)
+	})
+}
+
+func (p hostBlockProtocol) ConvertFromLatest(pk packet.Packet, conn *minecraft.Conn) []packet.Packet {
+	return convertHostBlockIDs(pk, hostUsesBlockHashes(pk, conn), func() []packet.Packet {
+		return p.Protocol.ConvertFromLatest(pk, conn)
+	})
+}
+
+func convertHostBlockIDs(pk packet.Packet, hashed bool, convert func() []packet.Packet) (out []packet.Packet) {
+	if !hashed {
+		return convert()
+	}
+	inner := unwrapWirePacket(pk)
+	// Hide click IDs/action first: generic field scrubbing alone does not stop
+	// adapters mapping ClickBlock's zero as a numeric block. Restore in reverse
+	// order so the generic snapshot cannot overwrite the saved interaction IDs.
+	restoreInteraction, interaction := scrubInteractionBlocks(inner)
+	restoreBlocks, blocks := scrubHashedBlockIDs(inner, true)
+	restore := func(q packet.Packet) {
+		q = unwrapWirePacket(q)
+		if blocks {
+			restoreBlocks(q)
+		}
+		if interaction {
+			restoreInteraction(q)
+		}
+	}
+	defer func() {
+		restore(pk)
+		for _, q := range out {
+			restore(q)
+		}
+	}()
+	return convert()
+}
 
 // c2hSkipLogged keeps the once-per-process explanation out of the hot path.
 var c2hSkipLogged atomic.Bool
@@ -301,14 +362,15 @@ func stableElemKey(v reflect.Value, index int) string {
 	return strconv.Itoa(index)
 }
 
-// walkBlockIDFields walks an H→C packet and calls fn(key, field) for every
+// walkBlockIDFields walks a gameplay packet and calls fn(key, field) for every
 // settable int32/uint32 field whose name contains "BlockRuntimeID". That naming
 // covers UpdateBlock.NewBlockRuntimeID, BlockChangeEntry.BlockRuntimeID and the
 // ItemStack.BlockRuntimeID nested inside every item-carrying packet family.
 //
 // Bytes/strings/maps are skipped: LevelChunk.RawPayload is a multi-kilobyte
-// []byte and must not be walked byte-by-byte. Unexported fields (e.g.
-// Optional.val) are skipped for safety; no H→C packet wraps a block ID in one.
+// []byte and must not be walked byte-by-byte. Optional item instances use their
+// public Value/Option API; all other unexported fields are skipped. Packed
+// event data and falling-block metadata are handled explicitly by the scrubber.
 func walkBlockIDFields(v reflect.Value, fn func(key string, f reflect.Value)) {
 	visitBlockIDFields(v, "", 0, fn)
 }
@@ -316,6 +378,17 @@ func walkBlockIDFields(v reflect.Value, fn func(key string, f reflect.Value)) {
 func visitBlockIDFields(v reflect.Value, path string, depth int, fn func(string, reflect.Value)) {
 	if depth > 16 || !v.IsValid() {
 		return
+	}
+	// Optional stores its value privately. Walk a public copy and write it back
+	// so item-ID conversion remains intact when restoring only the block hash.
+	if v.CanInterface() && v.CanSet() {
+		if optional, ok := v.Interface().(protocol.Optional[protocol.ItemInstance]); ok {
+			if item, present := optional.Value(); present {
+				visitBlockIDFields(reflect.ValueOf(&item).Elem(), path+".Value", depth+1, fn)
+				v.Set(reflect.ValueOf(protocol.Option(item)))
+			}
+			return
+		}
 	}
 	switch v.Kind() {
 	case reflect.Pointer, reflect.Interface:
@@ -388,9 +461,19 @@ func scrubHashedBlockIDs(pk packet.Packet, hashed bool) (restore func(packet.Pac
 		return nil, false
 	}
 	var refs []blockIDRef
-	var packedEvent, packedSound int32
-	var hasEvent, hasSound bool
+	var packedEvent, packedSound, fallingBlock int32
+	var hasEvent, hasSound, hasFallingBlock bool
+	var originalMetadata map[uint32]any
 	switch p := pk.(type) {
+	case *packet.AddActor:
+		if p.EntityType == "minecraft:falling_block" {
+			fallingBlock, hasFallingBlock = p.EntityMetadata[protocol.EntityDataKeyVariant].(int32)
+			if hasFallingBlock {
+				originalMetadata = p.EntityMetadata
+				p.EntityMetadata = maps.Clone(p.EntityMetadata)
+				p.EntityMetadata[protocol.EntityDataKeyVariant] = int32(0)
+			}
+		}
 	case *packet.LevelEvent:
 		if levelEventUsesBlockID(p.EventType) {
 			packedEvent, hasEvent = p.EventData, true
@@ -407,11 +490,11 @@ func scrubHashedBlockIDs(pk packet.Packet, hashed bool) (restore func(packet.Pac
 		refs = append(refs, blockIDRef{key: key, value: v})
 		setBlockIDField(f, 0)
 	})
-	if len(refs) == 0 && !hasEvent && !hasSound {
+	if len(refs) == 0 && !hasEvent && !hasSound && !hasFallingBlock {
 		return nil, false
 	}
 	if hashScrubLogged.CompareAndSwap(false, true) {
-		slog.Info("xvrelay: UseBlockNetworkIDHashes=true — hiding StateHash block IDs from the client codec",
+		slog.Info("xvrelay: UseBlockNetworkIDHashes=true — hiding StateHash block IDs from the version codec",
 			"reason", "pinned registry-aware adapters map numeric runtime IDs and corrupt protocol-independent hashes",
 			"restore", "stable structural keys, not positional",
 			"type", reflect.TypeOf(pk).String(), "fields", len(refs),
@@ -437,6 +520,15 @@ func scrubHashedBlockIDs(pk packet.Packet, hashed bool) (restore func(packet.Pac
 			cursor[key] = i + 1
 		})
 		switch q := out.(type) {
+		case *packet.AddActor:
+			if hasFallingBlock && q.EntityType == "minecraft:falling_block" {
+				if out == pk {
+					q.EntityMetadata = originalMetadata
+				} else {
+					q.EntityMetadata = maps.Clone(q.EntityMetadata)
+					q.EntityMetadata[protocol.EntityDataKeyVariant] = fallingBlock
+				}
+			}
 		case *packet.LevelEvent:
 			if hasEvent {
 				q.EventData = packedEvent

@@ -80,9 +80,11 @@ A further twenty exact-version sessions covered every remaining recognized alias
 
 Local evidence: `D:/tmp/xver-final-census-matrix.json`, `D:/tmp/xver-final-alias-matrix.json`, `D:/tmp/xver-final-alias-retry-<version>.json` and per-session `.json/.log` files. Runtime reports and BDS binaries are not shipped. The full root test suite and the relay, selfcheck and clientclone builds passed before this matrix.
 
+The host hash-guard build was also exercised with the independent `cmd/clientclone` against native BDS 1.26.60.6: all 13 selectable client protocols spawned, each received **385 LevelChunk packets**, decoded live item stacks, and reported **zero send errors and zero decode errors**. This remains client-to-native-host evidence; it does not verify a historical host. The raw reports are in `D:/tmp/xver-hostguard-live-<protocol>.json` and the aggregate is `D:/tmp/xver-hostguard-live-matrix-fixed-launcher.json`.
+
 These measurements cover login/spawn, delivered chunks, received item identities and packet writes. They do not establish rendered terrain correctness, accepted movement, successful placement/breaking, inventory mutation or entity interaction. Zero observed AIR loss also does not mean every native item exists in the older game: unsupported entries can be omitted before reaching the client.
 
-Historical-host conversion is **experimental and unverified**: registry-aware readers can treat hashed block IDs as dense palette indices and drop packets before relay forwarding. Optional stacks, falling-block metadata, legacy host item tables and opaque chunk payloads require further host-side validation. Do not infer all-pairs compatibility.
+Historical-host conversion remains **experimental**. A host-side codec guard now protects hashed gameplay block IDs in both directions while leaving numeric palette translation enabled. Regression tests cover `UpdateBlock` in hashed/numeric modes across twelve non-native families, plus optional storage stacks and falling-block variant metadata in both directions with positive/negative hashes. They check item-ID translation and input restoration; a panic-path test checks restoration without modifying shared metadata. `StartGame` uses its own hash-mode flag before connection data is populated, and the protocol-1001 host fixes remain nested inside the guard. These are codec tests, not live historical-host gameplay verification. Live custom-client sessions below use historical clients against a native 2225 host, not historical hosts. Legacy host item tables, incomplete incoming semantic mappings, stack-request craft-result serialization and opaque chunk payloads still need validation. Do not infer all-pairs compatibility.
 
 There is no verified `1.26.7x` adapter in the pinned dependency. Early/intermediate `1.21.x` families absent from the table remain unsupported. `1.21.42` is excluded by the pinned adapter. Broad ranges requested by the user are only partially covered by the explicit aliases below.
 
@@ -113,8 +115,8 @@ interchangeable: a Bedrock client refuses a server whose `GameVersion` is older 
 
 Protocol selection is automatic by default: the relay reads the host's protocol from LAN discovery (`ServerData` v5/v6/v7), and if necessary probes `2225 → 2193 → 2169 → 1001 → 2168 → 975 → 944 → 924 → 898 → 844 → 827 → 766 → 748`. Selection availability is not an all-pairs test result; the historical-host paths carry the limitations above.
 
-See [1.26.60 / protocol 2225](#1260--protocol-2225) for what "native" means after the upgrade: the
-engine still translates the four older families, but its internal palette/item tables now come from
+See [1.26.60 / protocol 2225](#12660--protocol-2225) for what "native" means after the upgrade: the
+engine still translates the twelve non-native selectable families, but its internal palette/item tables now come from
 the 2225 snapshot and the `2193` wire is produced by a frozen `v1_26_50` adapter.
 
 ## 1.26.60 / protocol 2225
@@ -391,10 +393,10 @@ than reusing the `2168` codec.
 | `-listen-nethernet` | off | `CONN-002`: accept clients over NetherNet/WebRTC LAN discovery instead of RakNet; the relay advertises on UDP 7551 through `lansignal` |
 | `-world` | *(auto)* | level name or NetworkID; empty = the only world found |
 | `-timeout` | `20s` | LAN discovery window |
-| `-client-proto` | `auto` | force the client-side protocol (`1001`/`2168`/`2169`/`2193`/`2225`); `auto` accepts all five |
-| `-host-proto` | `auto` | force the host-side protocol (`1001`/`2168`/`2169`/`2193`/`2225`) |
+| `-client-proto` | `auto` | force the client-side protocol (`748`/`766`/`827`/`844`/`898`/`924`/`944`/`975`/`1001`/`2168`/`2169`/`2193`/`2225`); `auto` accepts all thirteen |
+| `-host-proto` | `auto` | force the host-side protocol (`748`/`766`/`827`/`844`/`898`/`924`/`944`/`975`/`1001`/`2168`/`2169`/`2193`/`2225`) |
 | `-host-raknet` | *(off)* | dial the host directly over RakNet (`host:port`), skipping LAN discovery — for a BDS with `transport=raknet` and the self-check harness |
-| `-map-gameplay-items` | `true` | build the `2168`/`2169` codecs with `NewWithRegistries` so item IDs inside gameplay packets are translated; `false` restores plain `New()` for bisect |
+| `-map-gameplay-items` | `true` | build historical registry-aware codecs (`748`/`766`/`827`/`844`/`898`/`924`/`944`/`975`/`1001`/`2168`/`2169`/`2193`) with `NewWithRegistries` so supported item IDs inside gameplay packets are translated; `false` restores plain `New()` for bisect |
 | `-trace` | `40` | print the first N packet names per direction, `0` = off |
 | `-dial-timeout` | `60s` | max time to dial the host, resource-pack download included |
 | `-startgame` | `raw` | `raw` = replay the host's original bytes when the wire matches, `rebuild` = re-encode |
@@ -451,7 +453,7 @@ Honest scope, because "it builds" and "it works" are different claims.
   through the real client codec, encodes the packet with that protocol's writer, then decodes it
   with its own packet pool/reader — the same path `Conn.ReadPacket` uses. The numbers below are
   from the **2193-native** build; the current 2225-native numbers are in the
-  [1.26.60 section](#1260--protocol-2225). `NetworkID=0` after the
+  [1.26.60 section](#12660--protocol-2225). `NetworkID=0` after the
   round trip means the client decodes AIR. Measured 2026-11-05: `1001` → **143** invisible of 2076,
   `2168`/`2169` → **100**, `2193` → **0**, `wrong_id=0` everywhere, and the lost set matches
   `MappingReport().ItemFallbacks` exactly (143 for `1001`, 100 for `2169`; `2168` does not export

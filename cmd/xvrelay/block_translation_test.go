@@ -463,6 +463,193 @@ func TestHashedBlockScrubRestoresInput(t *testing.T) {
 	}
 }
 
+func TestHistoricalHostHashedUpdateBlock(t *testing.T) {
+	codec, err := registryAwareCodec(844)
+	if err != nil {
+		t.Fatal(err)
+	}
+	const hash = uint32(0x80310e21)
+	in := &packet.UpdateBlock{NewBlockRuntimeID: hash}
+	// Pin the dependency defect independently of the production guard.
+	if out := codec.ConvertToLatest(in, nil); len(out) != 0 {
+		t.Fatal("fixture no longer reproduces the pinned adapter's hashed-ID drop")
+	}
+	out := wrapHostProtocol(codec).ConvertToLatest(in, nil)
+	if len(out) != 1 {
+		t.Fatalf("historical host UpdateBlock dropped: got %d packets for hash %#x", len(out), hash)
+	}
+	if got := unwrapWirePacket(out[0]).(*packet.UpdateBlock).NewBlockRuntimeID; got != hash {
+		t.Fatalf("host hash changed: %#x -> %#x", hash, got)
+	}
+	if in.NewBlockRuntimeID != hash {
+		t.Fatal("input left scrubbed")
+	}
+}
+
+func TestHistoricalHostBlockModes(t *testing.T) {
+	for _, id := range []int32{748, 766, 827, 844, 898, 924, 944, 975, 1001, 2168, 2169, 2193} {
+		t.Run(fmt.Sprint(id), func(t *testing.T) {
+			base, ok := resolveProto(id)
+			if !ok {
+				t.Fatal("codec missing")
+			}
+			codec := wrapHostProtocol(base)
+			mapper, err := blocktranslate.New(blocktranslate.NativeProtocol, id, false, nil)
+			if err != nil {
+				t.Fatal(err)
+			}
+			nativeID, ok := mapper.SourceID("minecraft:stone", nil)
+			if !ok {
+				t.Fatal("stone missing")
+			}
+			hostID, err := mapper.Map(nativeID)
+			if err != nil {
+				t.Fatal(err)
+			}
+			for _, hashed := range []bool{false, true} {
+				for _, incoming := range []bool{false, true} {
+					t.Run(fmt.Sprintf("hashed=%v/incoming=%v", hashed, incoming), func(t *testing.T) {
+						inID, wantID := nativeID, hostID
+						if incoming {
+							inID, wantID = hostID, nativeID
+						}
+						var conn *minecraft.Conn
+						if hashed {
+							inID, wantID = 0x80310e21, 0x80310e21
+						} else {
+							conn = new(minecraft.Conn)
+						}
+						in := &packet.UpdateBlock{NewBlockRuntimeID: inID}
+						var wire packet.Packet = in
+						if incoming {
+							// Exercise the actual historical packet-pool wrapper, without
+							// letting an outgoing adapter pre-map this wire-domain ID.
+							wire = base.Packets(false)[packet.IDUpdateBlock]()
+							unwrapWirePacket(wire).(*packet.UpdateBlock).NewBlockRuntimeID = inID
+						}
+						var out []packet.Packet
+						if incoming {
+							out = codec.ConvertToLatest(wire, conn)
+						} else {
+							out = codec.ConvertFromLatest(wire, conn)
+						}
+						if len(out) != 1 {
+							t.Fatalf("got %d packets", len(out))
+						}
+						if got := unwrapWirePacket(out[0]).(*packet.UpdateBlock).NewBlockRuntimeID; got != wantID {
+							t.Fatalf("%#x -> %#x, want %#x", inID, got, wantID)
+						}
+						if got := unwrapWirePacket(wire).(*packet.UpdateBlock).NewBlockRuntimeID; got != inID {
+							t.Fatal("input mutated")
+						}
+					})
+				}
+			}
+		})
+	}
+}
+
+func TestHistoricalHostAdditionalHashFields(t *testing.T) {
+	itemID := func(id int32) int32 {
+		t.Helper()
+		items, err := blocktranslate.Items(id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, item := range items {
+			if item.Name == "minecraft:stone" {
+				return int32(item.RuntimeID)
+			}
+		}
+		t.Fatalf("stone item missing for %d", id)
+		return 0
+	}
+	nativeStone := itemID(blocktranslate.NativeProtocol)
+	for _, id := range []int32{748, 766, 827, 844, 898, 924, 944, 975, 1001, 2168, 2169, 2193} {
+		base, ok := resolveProto(id)
+		if !ok {
+			t.Fatalf("codec %d missing", id)
+		}
+		codec := wrapHostProtocol(base)
+		hostStone := itemID(id)
+		for _, incoming := range []bool{false, true} {
+			for _, hash := range []int32{0x70310e21, -2144268767} {
+				t.Run(fmt.Sprintf("%d/incoming=%v/hash=%x", id, incoming, uint32(hash)), func(t *testing.T) {
+					fromItem, wantItem := nativeStone, hostStone
+					convert := codec.ConvertFromLatest
+					if incoming {
+						fromItem, wantItem = hostStone, nativeStone
+						convert = codec.ConvertToLatest
+					}
+					t.Run("optional storage stack", func(t *testing.T) {
+						in := &packet.InventorySlot{StorageItem: protocol.Option(protocol.ItemInstance{Stack: protocol.ItemStack{
+							ItemType: protocol.ItemType{NetworkID: fromItem}, Count: 1, BlockRuntimeID: hash,
+						}})}
+						out := convert(in, nil)
+						if len(out) != 1 {
+							t.Fatalf("storage packet dropped: %d", len(out))
+						}
+						got, present := unwrapWirePacket(out[0]).(*packet.InventorySlot).StorageItem.Value()
+						if !present || got.Stack.BlockRuntimeID != hash || got.Stack.NetworkID != wantItem {
+							t.Fatalf("storage = %+v, want hash=%x item=%d", got, uint32(hash), wantItem)
+						}
+						before, _ := in.StorageItem.Value()
+						if before.Stack.BlockRuntimeID != hash || before.Stack.NetworkID != fromItem {
+							t.Fatal("input storage mutated")
+						}
+					})
+					t.Run("falling block metadata", func(t *testing.T) {
+						metadata := map[uint32]any{protocol.EntityDataKeyVariant: hash}
+						in := &packet.AddActor{EntityType: "minecraft:falling_block", EntityMetadata: metadata}
+						out := convert(in, nil)
+						if len(out) != 1 {
+							t.Fatalf("falling block dropped: %d", len(out))
+						}
+						if got := unwrapWirePacket(out[0]).(*packet.AddActor).EntityMetadata[protocol.EntityDataKeyVariant]; got != hash {
+							t.Fatalf("metadata = %v", got)
+						}
+						if in.EntityMetadata[protocol.EntityDataKeyVariant] != hash || metadata[protocol.EntityDataKeyVariant] != hash {
+							t.Fatal("input/shared metadata mutated")
+						}
+					})
+				})
+			}
+		}
+	}
+}
+
+func TestHostHashGuardRestoresOnPanic(t *testing.T) {
+	const hash = int32(0x70310e21)
+	metadata := map[uint32]any{protocol.EntityDataKeyVariant: hash}
+	in := &packet.AddActor{EntityType: "minecraft:falling_block", EntityMetadata: metadata}
+	func() {
+		defer func() {
+			if recover() == nil {
+				t.Fatal("expected conversion panic")
+			}
+		}()
+		convertHostBlockIDs(in, true, func() []packet.Packet {
+			if in.EntityMetadata[protocol.EntityDataKeyVariant] != int32(0) || metadata[protocol.EntityDataKeyVariant] != hash {
+				t.Fatal("scrub must hide the hash without modifying the shared map")
+			}
+			panic("conversion failed")
+		})
+	}()
+	if in.EntityMetadata[protocol.EntityDataKeyVariant] != hash {
+		t.Fatal("input left scrubbed after panic")
+	}
+}
+
+func TestHostHashModeBeforeStartGame(t *testing.T) {
+	conn := new(minecraft.Conn)
+	if hostUsesBlockHashes(&packet.StartGame{UseBlockNetworkIDHashes: true}, conn) != true {
+		t.Fatal("StartGame must use its own flag before GameData is populated")
+	}
+	if hostUsesBlockHashes(&packet.StartGame{}, nil) || hostUsesBlockHashes(&packet.UpdateBlock{}, conn) {
+		t.Fatal("explicit numeric mode must not enable the guard")
+	}
+}
+
 func TestHistoricalNumericUpdateBlockMapsOnce(t *testing.T) {
 	const clientProtocol = int32(844)
 	codec, ok := resolveProto(clientProtocol)
