@@ -1,0 +1,150 @@
+{
+  "additional_fields": "packet_metadata.nbt preserves recipe identity/network IDs, symmetry, unlock presence/ingredients, creative selection IDs/counts and block/item names without adding unknown fields to existing loader schemas",
+  "dragonfly_schema_commit": "92ccc8ebb41e46c83114ac1c8d31dd0d6249f0cf",
+  "encoding": "NetworkLittleEndian",
+  "game_version": "1.26.60.30",
+  "historical_schema": "data/v1001 (shared by v2169)",
+  "item_tags": 77,
+  "new_furnace_capture_required": false,
+  "outputs": [
+    {
+      "path": "biome_definitions.nbt",
+      "bytes": 17286,
+      "sha256": "12b5fc004461a73a2538935cc430c39ad0b0f748e12c2951b40d871e9c5d7cfe"
+    },
+    {
+      "path": "crafting_data.nbt",
+      "bytes": 1376737,
+      "sha256": "857e8daa181a94c77ab7508a7cd1e1417f559c945ef0bb46de30ed7b4ec65fc9"
+    },
+    {
+      "path": "creative_items.nbt",
+      "bytes": 168431,
+      "sha256": "5a62c4b9895376a479e9eee6474c19022d730be4652dd117ba1d0c091f013124"
+    },
+    {
+      "path": "entity_identifiers.nbt",
+      "bytes": 8971,
+      "sha256": "b51bb887d20b8e4b1dd7537673cd0ea87087d0c886dcde1a0d2a133d02e49b15"
+    },
+    {
+      "path": "item_tags.json",
+      "bytes": 42839,
+      "sha256": "fa0db843b0cf8d269abc20f933400b835352581718d91a74cb3a3b374ae01eb9"
+    },
+    {
+      "path": "packet_metadata.nbt",
+      "bytes": 1932258,
+      "sha256": "ad9e39adfc75e49f05517dc5e2f96cc2d84d37523b8abdb75bdb5245165e7456"
+    },
+    {
+      "path": "potion_data.nbt",
+      "bytes": 34125,
+      "sha256": "aaf4d3862f6e6b82acad1953bdb20f8ffe4024302b1bd846c86f5dc5a5fa3313"
+    },
+    {
+      "path": "smithing_data.nbt",
+      "bytes": 3290,
+      "sha256": "8d260ab75a76d013e43f9a10fdf747ffd83d06f6b428e50dac6ad77a3af340d8"
+    },
+    {
+      "path": "smithing_trim_data.nbt",
+      "bytes": 218,
+      "sha256": "a3dd7e74e1340745455156d0820a118bf29dbc58bc548e9cba0735ef290866e8"
+    }
+  ],
+  "packet_roundtrips": [
+    "CreativeContent",
+    "CraftingData",
+    "BiomeDefinitionList"
+  ],
+  "protocol_id": 2225,
+  "recipes_by_block": {
+    "blast_furnace": 62,
+    "campfire": 9,
+    "cartography_table": 2,
+    "crafting_table": 4130,
+    "deprecated": 34,
+    "furnace": 134,
+    "smithing_table": 13,
+    "smoker": 9,
+    "soul_campfire": 9,
+    "stonecutter": 354
+  },
+  "referenced_recipe_tags": 17,
+  "runtime_registry_installed": false,
+  "schema_version": 1,
+  "source_files": [
+    {
+      "path": "block_state_domains.json",
+      "bytes": 29509,
+      "sha256": "633cd7148e31f42f12f7205d50414a110cc84e3f074bcf1e7cb6f6f4db7a712d"
+    },
+    {
+      "path": "block_states.nbt",
+      "bytes": 3413601,
+      "sha256": "10cb917063440faef680a8bb84b5d0842a699508a0ff4afd2e0d52f1bc60c9a6"
+    },
+    {
+      "path": "block_to_item.json",
+      "bytes": 275136,
+      "sha256": "d04fab555b0af5eaaa7594aaf1c67ec3d824790be391bdc16f7a3be738f60551"
+    },
+    {
+      "path": "data_driven_blocks.nbt",
+      "bytes": 72764,
+      "sha256": "ea51c99ad3d7a30f7edf87b4a6cf658a884b371c5608028e2c0abe00a0df3000"
+    },
+    {
+      "path": "raw/item_tags.json",
+      "bytes": 117184,
+      "sha256": "1b71166d718c25203f4547d3963d90d7bd33fca50d8355d7434dc46c664c2b8f"
+    },
+    {
+      "path": "raw/biome_definitions.bin",
+      "bytes": 7667,
+      "sha256": "6c444ef1401a2a7f0dcd1de4eb744b9235b8bd578035f626562e48f732a0fb69"
+    },
+    {
+      "path": "raw/crafting_data.bin",
+      "bytes": 1063236,
+      "sha256": "919789e474f068982c0b690c7c5fc7c1949635e8ceea9736182ced1406682f8c"
+    },
+    {
+      "path": "raw/creative_content.bin",
+      "bytes": 56420,
+      "sha256": "3a1daef717fca2a507dd74074eccb6d5e35942ad7382b830179ff8c10f704f0a"
+    },
+    {
+      "path": "raw/entity_identifiers.bin",
+      "bytes": 8971,
+      "sha256": "b51bb887d20b8e4b1dd7537673cd0ea87087d0c886dcde1a0d2a133d02e49b15"
+    },
+    {
+      "path": "raw/item_registry.bin",
+      "bytes": 113566,
+      "sha256": "43a9ef888f7d13911c9203daf5a533000cdb62602a2886d54ffc2e4bea70e71b"
+    },
+    {
+      "path": "raw/start_game.bin",
+      "bytes": 73911,
+      "sha256": "3ccf5d4f9b9f7e28a5fa8688f12e203026344f3ac0a95a0d3d8495c381f293ab"
+    },
+    {
+      "path": "script_validation.json",
+      "bytes": 4171,
+      "sha256": "a9b785dfac7f0dc0d9d5f31c0a9436560a324060cc6b49ccd57ffd8358fdd8af"
+    },
+    {
+      "path": "validation.json",
+      "bytes": 1237,
+      "sha256": "4d4010bcc840932ff3530b130b22c223e1a13b62b0718177c6019a39e2e7c6fa"
+    },
+    {
+      "path": "vanilla_items.nbt",
+      "bytes": 204961,
+      "sha256": "a41c2c102e92a445421830448f4291297bfdd7b137d113cce281ac1845d1205e"
+    }
+  ],
+  "wire_metadata_preserved": true
+}

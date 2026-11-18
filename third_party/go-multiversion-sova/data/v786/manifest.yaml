@@ -1,0 +1,43 @@
+schema_version: 1
+protocol_id: 786
+game_versions: ["1.21.70", "1.21.71", "1.21.72", "1.21.73"]
+source:
+  repository: "https://github.com/df-mc/dragonfly"
+  commit: "adc6ec8d2cd3c185da7fa64171399c75e9bbfafa"
+  nbt_encoding: "NetworkLittleEndian"
+snapshots:
+  - file: "block_states.nbt"
+    source_path: "server/world/block_states.nbt"
+    git_blob: "0db9487c78875849554d63968c06f898f0743559"
+    bytes: 2086775
+    sha256: "bfac8f1f3d89453ac11af6dfe8d37a1a08f3ec67dcdf7d242a43a7b667b0fb99"
+  - file: "vanilla_items.nbt"
+    source_path: "server/world/vanilla_items.nbt"
+    git_blob: "1cf38e30793b37482587c0b5a51bb2b2d0ef1250"
+    bytes: 165548
+    sha256: "1867326db1139239287e83f038de68438799de47c00913881a122b5b0a1e04b0"
+  - file: "creative_items.nbt"
+    source_path: "server/item/creative/creative_items.nbt"
+    git_blob: "33617f142ff5873ba72cc89ae10fe73188e0f6b4"
+    bytes: 139783
+    sha256: "83173ed3328bf5931a047babd9219705912fc74e8995a1eb403648eab6d57c3c"
+  - file: "crafting_data.nbt"
+    source_path: "server/item/recipe/crafting_data.nbt"
+    git_blob: "dadd75202f96b892de87e1cd6c026fb152339bc2"
+    bytes: 796522
+    sha256: "917749f44cf455e14e89c7ea7bcfc95aeb991da02992dd87ae015f33616678ed"
+  - file: "furnace_data.nbt"
+    source_path: "server/item/recipe/furnace_data.nbt"
+    git_blob: "3460bff45b055cefd3d932396324ae0c56ccac9e"
+    bytes: 34894
+    sha256: "8fdc18bb71049dd43d81f5cafe4bfa22b32dd57ddd355cee540ad63a4bead33a"
+  - file: "potion_data.nbt"
+    source_path: "server/item/recipe/potion_data.nbt"
+    git_blob: "7d49a052bc2ab6d5ea9f7d6b1b659621163bc279"
+    bytes: 33442
+    sha256: "49e29c2e4a5a729cc0e81b7782dc1fed0e1a6b0064bb9a2cdfba168915b86648"
+  - file: "smithing_data.nbt"
+    source_path: "server/item/recipe/smithing_data.nbt"
+    git_blob: "362d1e7903f2b84c97501f1b1dbddf475b5d2649"
+    bytes: 2351
+    sha256: "99c9eb3ea54fca8a43c880fa91e6f1eb0ca350a051aad7e5ba1621659e3e4f7b"

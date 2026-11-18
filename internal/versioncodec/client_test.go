@@ -8,8 +8,11 @@ import (
 	"github.com/sandertv/gophertunnel/minecraft"
 	"github.com/sandertv/gophertunnel/minecraft/protocol"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
-	"github.com/shawtymarco/go-multiversion/protocols/v1_21_40"
-	"github.com/shawtymarco/go-multiversion/protocols/v1_21_50"
+	v1_21_0 "github.com/shawtymarco/go-multiversion/protocols/v1_21_0"
+	v1_21_20 "github.com/shawtymarco/go-multiversion/protocols/v1_21_20"
+	v1_21_30 "github.com/shawtymarco/go-multiversion/protocols/v1_21_30"
+	v1_21_40 "github.com/shawtymarco/go-multiversion/protocols/v1_21_40"
+	v1_21_50 "github.com/shawtymarco/go-multiversion/protocols/v1_21_50"
 )
 
 func TestRecordingReaderRemainingLength(t *testing.T) {
@@ -34,12 +37,22 @@ func TestLegacyClientReceivesEmbeddedRegistry(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, id := range []int32{748, 766} {
+	for _, id := range []int32{685, 712, 729, 748, 766} {
 		var server, base minecraft.Protocol
-		if id == 748 {
+		switch id {
+		case 685:
+			server, err = v1_21_0.NewWithRegistries(blocks, native)
+			base = v1_21_0.New()
+		case 712:
+			server, err = v1_21_20.NewWithRegistries(blocks, native)
+			base = v1_21_20.New()
+		case 729:
+			server, err = v1_21_30.NewWithRegistries(blocks, native)
+			base = v1_21_30.New()
+		case 748:
 			server, err = v1_21_40.NewWithRegistries(blocks, native)
 			base = v1_21_40.New()
-		} else {
+		default:
 			server, err = v1_21_50.NewWithRegistries(blocks, native)
 			base = v1_21_50.New()
 		}

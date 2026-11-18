@@ -1,0 +1,202 @@
+{
+  "native_resolved_candidates": [
+    {
+      "name": "minecraft:chalkboard",
+      "states": {
+        "direction": 10
+      },
+      "x": 0
+    },
+    {
+      "name": "minecraft:chalkboard",
+      "states": {
+        "direction": 11
+      },
+      "x": 1
+    },
+    {
+      "name": "minecraft:chalkboard",
+      "states": {
+        "direction": 12
+      },
+      "x": 2
+    },
+    {
+      "name": "minecraft:chalkboard",
+      "states": {
+        "direction": 13
+      },
+      "x": 3
+    },
+    {
+      "name": "minecraft:chalkboard",
+      "states": {
+        "direction": 14
+      },
+      "x": 4
+    },
+    {
+      "name": "minecraft:chalkboard",
+      "states": {
+        "direction": 15
+      },
+      "x": 5
+    },
+    {
+      "name": "minecraft:chalkboard",
+      "states": {
+        "direction": 4
+      },
+      "x": 6
+    },
+    {
+      "name": "minecraft:chalkboard",
+      "states": {
+        "direction": 5
+      },
+      "x": 7
+    },
+    {
+      "name": "minecraft:chalkboard",
+      "states": {
+        "direction": 6
+      },
+      "x": 8
+    },
+    {
+      "name": "minecraft:chalkboard",
+      "states": {
+        "direction": 7
+      },
+      "x": 9
+    },
+    {
+      "name": "minecraft:chalkboard",
+      "states": {
+        "direction": 8
+      },
+      "x": 10
+    },
+    {
+      "name": "minecraft:chalkboard",
+      "states": {
+        "direction": 9
+      },
+      "x": 11
+    },
+    {
+      "name": "minecraft:creaking_heart",
+      "states": {
+        "active": true,
+        "creaking_heart_state": "awake",
+        "natural": false,
+        "pillar_axis": "x"
+      },
+      "x": 12
+    },
+    {
+      "name": "minecraft:creaking_heart",
+      "states": {
+        "active": true,
+        "creaking_heart_state": "awake",
+        "natural": false,
+        "pillar_axis": "y"
+      },
+      "x": 13
+    },
+    {
+      "name": "minecraft:creaking_heart",
+      "states": {
+        "active": true,
+        "creaking_heart_state": "awake",
+        "natural": false,
+        "pillar_axis": "z"
+      },
+      "x": 14
+    },
+    {
+      "name": "minecraft:creaking_heart",
+      "states": {
+        "active": true,
+        "creaking_heart_state": "awake",
+        "natural": true,
+        "pillar_axis": "x"
+      },
+      "x": 15
+    },
+    {
+      "name": "minecraft:creaking_heart",
+      "states": {
+        "active": true,
+        "creaking_heart_state": "awake",
+        "natural": true,
+        "pillar_axis": "y"
+      },
+      "x": 16
+    },
+    {
+      "name": "minecraft:creaking_heart",
+      "states": {
+        "active": true,
+        "creaking_heart_state": "awake",
+        "natural": true,
+        "pillar_axis": "z"
+      },
+      "x": 17
+    },
+    {
+      "name": "minecraft:sculk_sensor",
+      "states": {
+        "powered_bit": false,
+        "sculk_sensor_phase": 2
+      },
+      "x": 18
+    },
+    {
+      "name": "minecraft:structure_void",
+      "states": {
+        "structure_void_type": "void"
+      },
+      "x": 19
+    }
+  ],
+  "structure_sources": [
+    {
+      "bytes": 3902521,
+      "database_key": "structuretemplate_native2225:palette",
+      "entries": 23940,
+      "sha256": "57f2b366ff0a10871fc8c0176bc5000b51dc95f67ef9c3eec2643ff85d21057c"
+    },
+    {
+      "bytes": 1984,
+      "database_key": "structuretemplate_native2225:validated_probe",
+      "entries": 20,
+      "sha256": "9e8bfa37f3599e0e14559ce50c226e620a0baf150aba343cb6bb1cf686b889a6"
+    }
+  ],
+  "summary": {
+    "blockTypes": 1480,
+    "duplicates": 47150,
+    "failures": [
+      {
+        "error": "InvalidArgumentError: Invalid value passed to argument [1]. The provided block permutation cannot be set.",
+        "name": "minecraft:structure_void",
+        "stage": "structure",
+        "states": {
+          "structure_void_type": "void"
+        }
+      },
+      {
+        "error": "InvalidArgumentError: Invalid value passed to argument [1]. The provided block permutation cannot be set.",
+        "name": "minecraft:structure_void",
+        "stage": "structure",
+        "states": {
+          "structure_void_type": "void"
+        }
+      }
+    ],
+    "missingItems": [],
+    "scriptItemTypes": 1623,
+    "states": 23940
+  }
+}

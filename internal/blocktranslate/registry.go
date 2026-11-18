@@ -9,10 +9,18 @@ import (
 	"fmt"
 	"sync"
 
+	v685 "github.com/shawtymarco/go-multiversion/data/v685"
+	v712 "github.com/shawtymarco/go-multiversion/data/v712"
+	v729 "github.com/shawtymarco/go-multiversion/data/v729"
 	v748 "github.com/shawtymarco/go-multiversion/data/v748"
 	v766 "github.com/shawtymarco/go-multiversion/data/v766"
+	v776 "github.com/shawtymarco/go-multiversion/data/v776"
+	v786 "github.com/shawtymarco/go-multiversion/data/v786"
+	v800 "github.com/shawtymarco/go-multiversion/data/v800"
+	v818 "github.com/shawtymarco/go-multiversion/data/v818"
 	v827 "github.com/shawtymarco/go-multiversion/data/v827"
 	v844 "github.com/shawtymarco/go-multiversion/data/v844"
+	v859 "github.com/shawtymarco/go-multiversion/data/v859"
 	v898 "github.com/shawtymarco/go-multiversion/data/v898"
 	v924 "github.com/shawtymarco/go-multiversion/data/v924"
 	v944 "github.com/shawtymarco/go-multiversion/data/v944"
@@ -134,6 +142,54 @@ func loadRegistry2225() (*registry, error) {
 // historical ordering used by each registry-aware codec.
 func historicalStates(id int32) (states []mapping.BlockState, err error) {
 	switch id {
+	case 685:
+		var src []v685.BlockState
+		src, err = v685.BlockStates()
+		for _, s := range src {
+			states = append(states, mapping.BlockState{Name: s.Name, Properties: s.Properties, Version: s.Version})
+		}
+	case 712:
+		var src []v712.BlockState
+		src, err = v712.BlockStates()
+		for _, s := range src {
+			states = append(states, mapping.BlockState{Name: s.Name, Properties: s.Properties, Version: s.Version})
+		}
+	case 729:
+		var src []v729.BlockState
+		src, err = v729.BlockStates()
+		for _, s := range src {
+			states = append(states, mapping.BlockState{Name: s.Name, Properties: s.Properties, Version: s.Version})
+		}
+	case 776:
+		var src []v776.BlockState
+		src, err = v776.BlockStates()
+		for _, s := range src {
+			states = append(states, mapping.BlockState{Name: s.Name, Properties: s.Properties, Version: s.Version})
+		}
+	case 786:
+		var src []v786.BlockState
+		src, err = v786.BlockStates()
+		for _, s := range src {
+			states = append(states, mapping.BlockState{Name: s.Name, Properties: s.Properties, Version: s.Version})
+		}
+	case 800:
+		var src []v800.BlockState
+		src, err = v800.BlockStates()
+		for _, s := range src {
+			states = append(states, mapping.BlockState{Name: s.Name, Properties: s.Properties, Version: s.Version})
+		}
+	case 818:
+		var src []v818.BlockState
+		src, err = v818.BlockStates()
+		for _, s := range src {
+			states = append(states, mapping.BlockState{Name: s.Name, Properties: s.Properties, Version: s.Version})
+		}
+	case 859:
+		var src []v859.BlockState
+		src, err = v859.BlockStates()
+		for _, s := range src {
+			states = append(states, mapping.BlockState{Name: s.Name, Properties: s.Properties, Version: s.Version})
+		}
 	case 748:
 		var src []v748.BlockState
 		src, err = v748.BlockStates()
@@ -247,7 +303,7 @@ func initCatalog() {
 		catalog.mappers[id] = m
 	}
 	catalog.mappers[2169] = catalog.mappers[2168]
-	for _, id := range []int32{748, 766, 827, 844, 898, 924, 944, 975} {
+	for _, id := range []int32{685, 712, 729, 748, 766, 776, 786, 800, 818, 827, 844, 859, 898, 924, 944, 975} {
 		states, err := historicalStates(id)
 		if err != nil {
 			catalog.err = fmt.Errorf("palette%d: %w", id, err)

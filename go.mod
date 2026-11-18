@@ -3,14 +3,14 @@ module bedrock-cross-version-relay
 go 1.25.0
 
 require (
-	github.com/df-mc/go-nethernet v1.0.26
+	github.com/df-mc/go-nethernet v1.0.27-0.20261104184408-4c06b550759d
+	github.com/df-mc/worldupgrader v1.0.22
 	github.com/sandertv/gophertunnel v1.63.1-0.20261030102901-0e179fc4bb08
 )
 
 require (
-	github.com/df-mc/worldupgrader v1.0.22 // indirect
 	github.com/pion/stun/v4 v4.0.1 // indirect
-	github.com/pion/transport/v5 v5.0.1 // indirect
+	github.com/pion/transport/v5 v5.1.4 // indirect
 	github.com/sandertv/go-raknet v1.15.2-0.20260705184311-0d1fd09e2cf6 // indirect
 )
 
@@ -26,19 +26,19 @@ require (
 	github.com/google/uuid v1.6.0
 	github.com/klauspost/compress v1.18.1 // indirect
 	github.com/pion/datachannel v1.6.3 // indirect
-	github.com/pion/dtls/v3 v3.1.9 // indirect
-	github.com/pion/ice/v4 v4.4.4 // indirect
-	github.com/pion/interceptor v0.1.49 // indirect
+	github.com/pion/dtls/v3 v3.1.15 // indirect
+	github.com/pion/ice/v4 v4.4.8 // indirect
+	github.com/pion/interceptor v0.1.51 // indirect
 	github.com/pion/logging v0.2.4 // indirect
-	github.com/pion/mdns/v2 v2.2.1 // indirect
+	github.com/pion/mdns/v2 v2.2.2 // indirect
 	github.com/pion/randutil v0.1.0 // indirect
-	github.com/pion/rtcp v1.2.17 // indirect
-	github.com/pion/rtp v1.10.5 // indirect
-	github.com/pion/sctp v1.11.3 // indirect
+	github.com/pion/rtcp v1.2.20 // indirect
+	github.com/pion/rtp v1.10.6 // indirect
+	github.com/pion/sctp v1.12.0 // indirect
 	github.com/pion/sdp/v3 v3.0.20 // indirect
-	github.com/pion/srtp/v3 v3.1.0 // indirect
-	github.com/pion/turn/v5 v5.1.2 // indirect
-	github.com/pion/webrtc/v4 v4.2.21-0.20260920133716-91bfc6c2039f // indirect
+	github.com/pion/srtp/v3 v3.1.3 // indirect
+	github.com/pion/turn/v5 v5.1.3 // indirect
+	github.com/pion/webrtc/v4 v4.2.26 // indirect
 	github.com/shawtymarco/go-multiversion v0.0.0-20261107121328-f4ba8291d1bd
 	github.com/wlynxg/anet v0.0.5 // indirect
 	golang.org/x/crypto v0.53.0 // indirect
@@ -54,3 +54,5 @@ require (
 replace github.com/df-mc/go-nethernet => ./third_party/go-nethernet
 
 replace github.com/sandertv/gophertunnel => ./third_party/gophertunnel-2225
+
+replace github.com/shawtymarco/go-multiversion => ./third_party/go-multiversion-sova

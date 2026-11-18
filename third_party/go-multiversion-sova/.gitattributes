@@ -1,0 +1,15 @@
+# Snapshot hashes and wire fixtures must match Git/module-archive bytes on Windows.
+**/go.mod text eol=lf
+**/go.sum text eol=lf
+/data/**/*.json text eol=lf
+/protocols/**/testdata/*.json text eol=lf
+# Preserve the bytes of the historical Tedac snapshot on Windows and in Go module archives.
+/data/v419/item_runtime_ids.json text eol=lf
+# Published native preview sources retain exact bytes for provenance hashes.
+/data/native2223/raw/** -text
+/data/native2223/bds-metadata.json -text
+/data/native2225/raw/** -text
+/data/native2225/*.nbt -text
+/tools/extract_native2225/** text eol=lf
+# Version-specific BDS catalog copies retain their upstream checksum bytes.
+/versions/*-bds.json -text

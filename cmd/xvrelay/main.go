@@ -88,11 +88,19 @@ import (
 	"github.com/sandertv/gophertunnel/minecraft/protocol/login"
 	"github.com/sandertv/gophertunnel/minecraft/protocol/packet"
 	"github.com/sandertv/gophertunnel/minecraft/resource"
+	v1_21_0 "github.com/shawtymarco/go-multiversion/protocols/v1_21_0"
 	v1_21_100 "github.com/shawtymarco/go-multiversion/protocols/v1_21_100"
 	v1_21_110 "github.com/shawtymarco/go-multiversion/protocols/v1_21_110"
+	v1_21_120 "github.com/shawtymarco/go-multiversion/protocols/v1_21_120"
 	v1_21_130 "github.com/shawtymarco/go-multiversion/protocols/v1_21_130"
+	v1_21_20 "github.com/shawtymarco/go-multiversion/protocols/v1_21_20"
+	v1_21_30 "github.com/shawtymarco/go-multiversion/protocols/v1_21_30"
 	v1_21_40 "github.com/shawtymarco/go-multiversion/protocols/v1_21_40"
 	v1_21_50 "github.com/shawtymarco/go-multiversion/protocols/v1_21_50"
+	v1_21_60 "github.com/shawtymarco/go-multiversion/protocols/v1_21_60"
+	v1_21_70 "github.com/shawtymarco/go-multiversion/protocols/v1_21_70"
+	v1_21_80 "github.com/shawtymarco/go-multiversion/protocols/v1_21_80"
+	v1_21_90 "github.com/shawtymarco/go-multiversion/protocols/v1_21_90"
 	v1_26_0 "github.com/shawtymarco/go-multiversion/protocols/v1_26_0"
 	v1_26_10 "github.com/shawtymarco/go-multiversion/protocols/v1_26_10"
 	v1_26_20 "github.com/shawtymarco/go-multiversion/protocols/v1_26_20"
@@ -985,7 +993,7 @@ func legacy1001LevelChunkPacket(src *packet.LevelChunk) *packet.Unknown {
 //	2225 -> the native codec of the tree being built (1.26.60)
 func resolveProto(id int32) (minecraft.Protocol, bool) {
 	switch id {
-	case 748, 766, 827, 844, 898, 924, 944, 975:
+	case 685, 712, 729, 748, 766, 776, 786, 800, 818, 827, 844, 859, 898, 924, 944, 975:
 		p, err := historicalCodec(id)
 		if err != nil {
 			slog.Error("historical codec initialization failed", "protocol", id, "error", err)
@@ -1057,14 +1065,30 @@ func registryAwareCodec(id int32) (minecraft.Protocol, error) {
 		return nil, fmt.Errorf("native %d item registry: %w", blocktranslate.NativeProtocol, err)
 	}
 	switch id {
+	case 685:
+		return v1_21_0.NewWithRegistries(reg, items)
+	case 712:
+		return v1_21_20.NewWithRegistries(reg, items)
+	case 729:
+		return v1_21_30.NewWithRegistries(reg, items)
+	case 776:
+		return v1_21_60.NewWithRegistries(reg, items)
 	case 748:
 		return v1_21_40.NewWithRegistries(reg, items)
 	case 766:
 		return v1_21_50.NewWithRegistries(reg, items)
+	case 786:
+		return v1_21_70.NewWithRegistries(reg, items)
+	case 800:
+		return v1_21_80.NewWithRegistries(reg, items)
+	case 818:
+		return v1_21_90.NewWithRegistries(reg, items)
 	case 827:
 		return v1_21_100.NewWithRegistries(reg, items)
 	case 844:
 		return v1_21_110.NewWithRegistries(reg, items)
+	case 859:
+		return v1_21_120.NewWithRegistries(reg, items)
 	case 898:
 		return v1_21_130.NewWithRegistries(reg, items)
 	case 924:
@@ -1148,7 +1172,7 @@ func proto2193() minecraft.Protocol {
 
 func adapterHasRegistry(id int32) bool {
 	switch id {
-	case 748, 766, 827, 844, 898, 924, 944, 975:
+	case 685, 712, 729, 748, 766, 776, 786, 800, 818, 827, 844, 859, 898, 924, 944, 975:
 		_, err := historicalCodec(id)
 		return err == nil
 	case 1001:
@@ -2272,12 +2296,12 @@ func dialHost(ctx context.Context, ls *lansignal.Signaling, id uint64, cd login.
 // v5/v6). 2225 comes first because it is both the newest family and the native codec; a host
 // declaring an older version still jumps straight to protocolForVersion(hv) after the first
 // StartGame, so the extra candidate costs one cheap rejected login at most.
-var hostProtoProbeOrder = []int32{2225, 2193, 2169, 1001, 2168, 975, 944, 924, 898, 844, 827, 766, 748}
+var hostProtoProbeOrder = []int32{2225, 2193, 2169, 1001, 2168, 975, 944, 924, 898, 859, 844, 827, 818, 800, 786, 776, 766, 748, 729, 712, 685}
 
 // autoClientProtocols is what -client-proto auto expands to. Every supported family must be
 // listed: 2193 stopped being the native codec when the engine moved to 2225, and the mandatory
 // native add below only covers 2225.
-const autoClientProtocols = "748,766,827,844,898,924,944,975,1001,2168,2169,2193,2225"
+const autoClientProtocols = "685,712,729,748,766,776,786,800,818,827,844,859,898,924,944,975,1001,2168,2169,2193,2225"
 
 func dialHostWith(ctx context.Context, ls *lansignal.Signaling, id uint64, cd login.ClientData, identity login.IdentityData, cap *spawnCapture, protoID int32, timeout time.Duration) (*minecraft.Conn, error) {
 	w, ok := worldByID(ls, id)
@@ -2970,7 +2994,7 @@ func main() {
 	timeout := flag.Duration("timeout", 20*time.Second, "how long to scan for LAN worlds")
 	trace := flag.Int("trace", 40, "print the first N packet names per direction (0 = off)")
 	clientProtos := flag.String("client-proto", "auto",
-		"client protocols to accept: auto = all (748,766,827,844,898,924,944,975,1001,2168,2169,2193,2225) | list, e.g. 975,1001")
+		"client protocols to accept: auto = all (685,712,729,748,766,776,786,800,818,827,844,859,898,924,944,975,1001,2168,2169,2193,2225) | list, e.g. 975,1001")
 	hostProto := flag.String("host-proto", "auto",
 		"LAN world protocol: auto (read from LAN discovery) | 2225=1.26.60 | 2193=1.26.50-52 | 2169=1.26.45 | 2168=1.26.40-44 | 1001=1.26.30-36")
 	directHost := flag.String("host-raknet", "",

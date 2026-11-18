@@ -1,0 +1,62 @@
+schema_version: 2
+family:
+  id: all_26_u5
+  label: "Minecraft 1.26.50 stable"
+  canonical_game_version: "1.26.50"
+  protocol_id: 2193
+  stability: stable
+  excluded_versions: ["1.26.50 Preview / protocol 2192", "1.26.60 previews"]
+preparation:
+  repository: "https://github.com/shawtymarco/go-multiversion"
+  branch: "feat/all_26_u5"
+  commit: "0048e550a8f554366d296e95b1adae7653367ae3"
+wire_sources:
+  repository: "https://github.com/Sandertv/gophertunnel"
+  native_introduction_commit: "7a556a07335b663744b50d38062636ad8283f314"
+  native_final_commit: "80c811b6186016b3860c358368cfa47e507f26e9"
+  native_deployed_fork: "9e7f28092180fd2cae6c2a0ebc32f1c8882d26f1"
+  debug_renderer_correction: "98c3d1f3438820b478eb5495c6ff9fb99fa758c5"
+  native_tag: "v1.62.0"
+  outgoing_introduction: "7f058e5ddc393eaa0480dae338c5eee2feb323e6"
+  outgoing_inventory_correction: "283a5a97dfe65da94bcc0b401807f6aefa9e72ee"
+  outgoing_deployed_fork: "057c4218966db62b4329dd4f7bbc127d37109f05"
+  outgoing_protocol: 2169
+  outgoing_game_version: "1.26.45"
+dragonfly_sources:
+  repository: "https://github.com/df-mc/dragonfly"
+  native_introduction_commit: "4c7b5074be94fa83a1cd98e9c752083ad04a6e21"
+  native_final_commit: "4c7b5074be94fa83a1cd98e9c752083ad04a6e21"
+  native_tag: "v0.11.5"
+  native_deployed_fork: "92ccc8ebb41e46c83114ac1c8d31dd0d6249f0cf"
+  outgoing_deployed_fork: "cc555383f85aab5b0b1fa70731dfcf5cbee4c3fb"
+protocol_documentation:
+  repository: "https://github.com/Mojang/bedrock-protocol-docs"
+  tag: "v1.26.50"
+  commit: "475bd72ed89036af4eb18426774ef3b953de7603"
+  network_version: 2193
+  note: "The stable tag's generated version label says 1.26.50-beta.0; executable final source confirms protocol 2193."
+registry_blobs:
+  source_commit: "4c7b5074be94fa83a1cd98e9c752083ad04a6e21"
+  files:
+    - {path: "server/world/block_states.nbt", git_blob: "ee29e5e039086c10bdfb964621a8e146b4f7af19", sha256: "f0784a6284d6ca7d98cc3472f4ce84241a11e11b18ed16f6591dfd5e6da6fbd6", bytes: 3102889}
+    - {path: "server/world/data_driven_blocks.nbt", git_blob: "4271381a586dfecd6050a259e2f7304d555ac99c", sha256: "edd004e69730a5f4ced9b2feef25d2c6b2ffba8153e2e81686ed4b57cf0d47ef", bytes: 80180}
+    - {path: "server/world/vanilla_items.nbt", git_blob: "f5a06ce962910dce44aa59d2bffb56b9e31cd52b", sha256: "fee2d053125407a228731226e9025598d4d9facf19da1f0ad6aa7349d8389633", bytes: 204667}
+    - {path: "server/item/creative/creative_items.nbt", git_blob: "171fd47c7efef9e1a9f15395e12f859ce4b46841", sha256: "973acdaba22dae305908606376c89c7b2c761c0e5623c7628e004203eaf50a2b", bytes: 160601}
+    - {path: "server/item/recipe/crafting_data.nbt", git_blob: "6f01c9b8aec212b642757f205890e93fc6432be2", sha256: "8d553edf425042a1868a8d417a44224ba5f608dab4d808784b2a8b74a20aa887", bytes: 1502513}
+    - {path: "server/item/recipe/potion_data.nbt", git_blob: "731d8d043e7f52ac040de1d3a6419f91f322689f", sha256: "992a90ef8835226aaacdf450bb32148df8e1a91f0ff5c82e4a08f47f64d6c96e", bytes: 33442}
+    - {path: "server/item/recipe/item_tags.json", git_blob: "e999d50e6aa405820817c1ac3031600cf049e657", bytes: 47306}
+transport:
+  native_raknet_protocol: 11
+  outgoing_raknet_protocol: 11
+  raknet_source_commit: "0d1fd09e2cf6"
+  first_minecraft_packet: "RequestNetworkSettings"
+  batch_compression_format: "Negotiated compression with algorithm prefix."
+  encryption_format: "Native AES-CTR; adapter-selected CFB8 retained for protocol 419."
+  legacy_bootstrap: "419/475/486 retain RakNet v10, Login-first and unprefixed flate."
+decisions:
+  conversion_direction: "Historical registry/gameplay conversion is direct to/from 2193; shared wire codecs perform no intermediate mappings."
+  outgoing_native_policy: "2169 is a registry-aware historical adapter."
+  parameterless_catalogue: "Empty: every historical adapter needs native registries."
+  modding_required: false
+  bds_extraction: "Not performed: exact public wire code and matching tracked data are available."
+  real_client_validation: "Pending for every release against the new native baseline."

@@ -1,0 +1,65 @@
+{
+  "schema_version": 1,
+  "protocol_id": 2193,
+  "game_versions": [
+    "1.26.50",
+    "1.26.51",
+    "1.26.52"
+  ],
+  "source_repository": "https://github.com/shawtymarco/dragonfly",
+  "source_commit": "92ccc8ebb41e46c83114ac1c8d31dd0d6249f0cf",
+  "encoding": "NetworkLittleEndian",
+  "ordering": "Dragonfly BasicBlockRegistry.Finalize: stable FNV-1 64-bit name sort, preserving source order within a name",
+  "snapshots": [
+    {
+      "file": "block_states.nbt",
+      "source_path": "server/world/block_states.nbt",
+      "git_blob": "ee29e5e039086c10bdfb964621a8e146b4f7af19",
+      "bytes": 3102889,
+      "sha256": "f0784a6284d6ca7d98cc3472f4ce84241a11e11b18ed16f6591dfd5e6da6fbd6"
+    },
+    {
+      "file": "vanilla_items.nbt",
+      "source_path": "server/world/vanilla_items.nbt",
+      "git_blob": "f5a06ce962910dce44aa59d2bffb56b9e31cd52b",
+      "bytes": 204667,
+      "sha256": "fee2d053125407a228731226e9025598d4d9facf19da1f0ad6aa7349d8389633"
+    },
+    {
+      "file": "creative_items.nbt",
+      "source_path": "server/item/creative/creative_items.nbt",
+      "git_blob": "171fd47c7efef9e1a9f15395e12f859ce4b46841",
+      "bytes": 160601,
+      "sha256": "973acdaba22dae305908606376c89c7b2c761c0e5623c7628e004203eaf50a2b"
+    },
+    {
+      "file": "crafting_data.nbt",
+      "source_path": "server/item/recipe/crafting_data.nbt",
+      "git_blob": "6f01c9b8aec212b642757f205890e93fc6432be2",
+      "bytes": 1502513,
+      "sha256": "8d553edf425042a1868a8d417a44224ba5f608dab4d808784b2a8b74a20aa887"
+    },
+    {
+      "file": "potion_data.nbt",
+      "source_path": "server/item/recipe/potion_data.nbt",
+      "git_blob": "731d8d043e7f52ac040de1d3a6419f91f322689f",
+      "bytes": 33442,
+      "sha256": "992a90ef8835226aaacdf450bb32148df8e1a91f0ff5c82e4a08f47f64d6c96e"
+    },
+    {
+      "file": "item_tags.json",
+      "source_path": "server/item/recipe/item_tags.json",
+      "git_blob": "e999d50e6aa405820817c1ac3031600cf049e657",
+      "bytes": 47306,
+      "sha256": "4af255938ccb9617cb7d33f9d531e38e5f2cbfeda28dbaca80bcb6076350227d"
+    },
+    {
+      "file": "data_driven_blocks.nbt",
+      "source_path": "server/world/data_driven_blocks.nbt",
+      "encoding": "LittleEndian",
+      "git_blob": "4271381a586dfecd6050a259e2f7304d555ac99c",
+      "bytes": 80180,
+      "sha256": "edd004e69730a5f4ced9b2feef25d2c6b2ffba8153e2e81686ed4b57cf0d47ef"
+    }
+  ]
+}

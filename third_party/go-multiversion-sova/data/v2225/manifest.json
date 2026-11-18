@@ -1,0 +1,69 @@
+{
+  "schema_version": 1,
+  "protocol_id": 2225,
+  "game_versions": [
+    "1.26.60"
+  ],
+  "source_repository": "https://github.com/df-mc/dragonfly",
+  "source_commit": "d86aefd9ff9b6a357d6dfadab2093af811545256",
+  "encoding": "NetworkLittleEndian",
+  "ordering": "Native runtime uses typed block-state hashes; embedded order is not a network ID",
+  "snapshots": [
+    {
+      "file": "block_states.nbt",
+      "source_path": "server/world/block_states.nbt",
+      "git_blob": "e70a7fbdf4c2e7a10ddf6d3bca8bc6c7a8a05ae0",
+      "bytes": 3413601,
+      "sha256": "88b8c903ac75d46247bed5ff785c0c050068d28440190f7412d697b045d2d51f",
+      "encoding": "NetworkLittleEndian"
+    },
+    {
+      "file": "vanilla_items.nbt",
+      "source_path": "server/world/vanilla_items.nbt",
+      "git_blob": "adb7913c3f682b3516c661fd82af8b29bf6b6f6c",
+      "bytes": 204961,
+      "sha256": "b3a2e88d38525e494a1a3658cec2f02bd03c74975ed67cedad518beceeadef8f",
+      "encoding": "NetworkLittleEndian"
+    },
+    {
+      "file": "creative_items.nbt",
+      "source_path": "server/item/creative/creative_items.nbt",
+      "git_blob": "a911692b986c35ae9dbe3a25642dc50c88767e5d",
+      "bytes": 160769,
+      "sha256": "8cc5f625407023eb400381616323bdf51a4c111bf1566edebff7d0a3f87a41e3",
+      "encoding": "NetworkLittleEndian"
+    },
+    {
+      "file": "crafting_data.nbt",
+      "source_path": "server/item/recipe/crafting_data.nbt",
+      "git_blob": "8511d36d60294dce77543123b9c0ecf7f66993b7",
+      "bytes": 1503437,
+      "sha256": "5458827f9541cfdef12f083f10ba8fa278d56b391d0768a0d857e71f3235f8f2",
+      "encoding": "NetworkLittleEndian"
+    },
+    {
+      "file": "potion_data.nbt",
+      "source_path": "server/item/recipe/potion_data.nbt",
+      "git_blob": "731d8d043e7f52ac040de1d3a6419f91f322689f",
+      "bytes": 33442,
+      "sha256": "992a90ef8835226aaacdf450bb32148df8e1a91f0ff5c82e4a08f47f64d6c96e",
+      "encoding": "NetworkLittleEndian"
+    },
+    {
+      "file": "item_tags.json",
+      "source_path": "server/item/recipe/item_tags.json",
+      "git_blob": "e999d50e6aa405820817c1ac3031600cf049e657",
+      "bytes": 47306,
+      "sha256": "4af255938ccb9617cb7d33f9d531e38e5f2cbfeda28dbaca80bcb6076350227d",
+      "encoding": "JSON"
+    },
+    {
+      "file": "data_driven_blocks.nbt",
+      "source_path": "server/world/data_driven_blocks.nbt",
+      "encoding": "LittleEndian",
+      "git_blob": "4271381a586dfecd6050a259e2f7304d555ac99c",
+      "bytes": 80180,
+      "sha256": "edd004e69730a5f4ced9b2feef25d2c6b2ffba8153e2e81686ed4b57cf0d47ef"
+    }
+  ]
+}

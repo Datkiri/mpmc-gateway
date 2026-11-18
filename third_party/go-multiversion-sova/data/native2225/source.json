@@ -1,0 +1,94 @@
+{
+  "schema_version": 1,
+  "target": {
+    "game_version": "1.26.60.30",
+    "protocol_id": 2225,
+    "channel": "preview"
+  },
+  "acquisition_date": "2026-10-12",
+  "method": "Local vanilla packet acquisition followed by an approved script-only behavior-pack registry enumeration and BDS structure serialization",
+  "bds": {
+    "catalog_commit": "f63ebcd4d116952b2afeb1f7c67f5017a05aa6bc",
+    "catalog_path": "preview/1.26.60-preview.30/metadata.json",
+    "archive_url": "https://www.minecraft.net/bedrockdedicatedserver/bin-linux-preview/bedrock-server-1.26.60.30.zip",
+    "archive_sha256": "bace5dae627a66020c6a6af3a25881ebda7f585b9fa3dadee23edfb566596574",
+    "executable_sha256": "2c76ff3184906259f3964e5bf2ab9db414f1570b8179a3561637a134a7de72e7",
+    "elf_build_id": "1bc418cce3ada55b1e4e0a7e30235ab79b59b59a",
+    "reported_build_id": 52213776,
+    "reported_commit": "38a19575b5b57f01eb6ec27ccc646182e0cbe6f7",
+    "reported_branch": "r/26_u6",
+    "binary_unmodified": true
+  },
+  "environment": {
+    "platform": "Ubuntu WSL2 linux/amd64",
+    "network": "user/network namespace with only loopback",
+    "public_capture_transport": "raknet",
+    "external_access": false,
+    "world": "dedicated disposable extraction world",
+    "seed": "1",
+    "gamemode": "creative",
+    "experiments": [],
+    "education_features_enabled": false,
+    "vanilla_capture_precedes_extraction_pack": true
+  },
+  "sources": {
+    "gophertunnel": "4d6bffd4ed49ac9298d6abaa329415432a16f3e4",
+    "gophertunnel_module": "v1.57.1-0.20261011160103-4d6bffd4ed49",
+    "pmmp_mapping_reference": "368c45655421fda93f8bed55fe2f7844b1c21e14",
+    "microsoft_scripting_samples": "73a171fc8393a1052b4ca0669dc82231f775d8b1",
+    "previous_palette_reference": "axolotl-pm/BedrockData@5f3cd976c61e171876c93419478fbcd9e46894dc",
+    "previous_palette_used_only_for_20_native_roundtrip_candidates": true,
+    "script_module": "@minecraft/server@2.0.0"
+  },
+  "coverage": {
+    "script_enumerated_and_serialized_states": 23940,
+    "additional_native_resolved_and_reserialized_states": 20,
+    "total_states": 23960,
+    "block_identifiers": 1480,
+    "items": 2080,
+    "item_tags": 2080,
+    "creative_groups": 124,
+    "creative_entries": 1980,
+    "biomes": 89,
+    "typed_block_state_equality_with_29": true,
+    "internal_blockpalette_memory_walk": false,
+    "runtime_integration": false,
+    "real_client_validation": false,
+    "furnace_recipes_present_in_captured_shapeless": true,
+    "education_recipe_profile_extracted": false
+  },
+  "tool_hashes": [
+    {
+      "path": "tools/extract_native2225/capture/main.go",
+      "sha256": "7b4a2931b877032dc51bbf8ad05df806421ece92bc4abe1d3d782e038a5bac5e"
+    },
+    {
+      "path": "tools/extract_native2225/candidates/main.go",
+      "sha256": "df2331ea1e6f80a392effa1d600c18b6700b1dff135229fb5d1e735e8f2958dd"
+    },
+    {
+      "path": "tools/extract_native2225/extract/main.go",
+      "sha256": "d2f837ef5a33b08eac8af9511054265810da32b2b0973c688a4f8529d6b0c961"
+    },
+    {
+      "path": "tools/extract_native2225/palette-pack/manifest.json",
+      "sha256": "36c4c3f354e8960249fcc66885e7b6f55f0f6701223d8f34f15030fefd02dc0c"
+    },
+    {
+      "path": "tools/extract_native2225/palette-pack/scripts/main.js",
+      "sha256": "c34f6203af237d9360b4977e1972ffb63a7ea37a2e50c9621215cef6b4838b57"
+    },
+    {
+      "path": "tools/extract_native2225/palette-pack/scripts/items.js",
+      "sha256": "5bc1d6b1d1dcf9d04ae80407109519271c8aaf3459f73d053953d15479229f37"
+    },
+    {
+      "path": "tools/extract_native2225/go.mod",
+      "sha256": "2661ead2e2db63b88bc1be2c20f718011d27371eab24ff2f9e0fabbb801dfbed"
+    },
+    {
+      "path": "tools/extract_native2225/go.sum",
+      "sha256": "5fe5939d6ecb4362b35c95686e571ad16aff98aa2b66f8d80faa7566cf4cde54"
+    }
+  ]
+}

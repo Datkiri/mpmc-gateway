@@ -1,0 +1,2366 @@
+[
+  {
+    "id": "redstone_west",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "none",
+      "side",
+      "up"
+    ]
+  },
+  {
+    "id": "redstone_south",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "none",
+      "side",
+      "up"
+    ]
+  },
+  {
+    "id": "redstone_east",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "none",
+      "side",
+      "up"
+    ]
+  },
+  {
+    "id": "redstone_north",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "none",
+      "side",
+      "up"
+    ]
+  },
+  {
+    "id": "potent_sulfur_state",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "dry",
+      "wet",
+      "dormant",
+      "erupting",
+      "continuous"
+    ]
+  },
+  {
+    "id": "powered_shelf_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  {
+    "id": "rehydration_level",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  {
+    "id": "creaking_heart_state",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "uprooted",
+      "dormant",
+      "awake"
+    ]
+  },
+  {
+    "id": "natural",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "pale_moss_carpet_side_west",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "none",
+      "short",
+      "tall"
+    ]
+  },
+  {
+    "id": "pale_moss_carpet_side_south",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "none",
+      "short",
+      "tall"
+    ]
+  },
+  {
+    "id": "pale_moss_carpet_side_east",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "none",
+      "short",
+      "tall"
+    ]
+  },
+  {
+    "id": "pale_moss_carpet_side_north",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "none",
+      "short",
+      "tall"
+    ]
+  },
+  {
+    "id": "tip",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "ominous",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "vault_state",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "inactive",
+      "active",
+      "unlocking",
+      "ejecting"
+    ]
+  },
+  {
+    "id": "trial_spawner_state",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ]
+  },
+  {
+    "id": "orientation",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "down_east",
+      "down_north",
+      "down_south",
+      "down_west",
+      "up_east",
+      "up_north",
+      "up_south",
+      "up_west",
+      "west_up",
+      "east_up",
+      "north_up",
+      "south_up"
+    ]
+  },
+  {
+    "id": "crafting",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "sculk_sensor_phase",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2
+    ]
+  },
+  {
+    "id": "brushed_progress",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  {
+    "id": "books_stored",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60,
+      61,
+      62,
+      63
+    ]
+  },
+  {
+    "id": "propagule_stage",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "can_summon",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "bloom",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "active",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "item_frame_photo_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "candles",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  {
+    "id": "lit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "multi_face_direction_bits",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25,
+      26,
+      27,
+      28,
+      29,
+      30,
+      31,
+      32,
+      33,
+      34,
+      35,
+      36,
+      37,
+      38,
+      39,
+      40,
+      41,
+      42,
+      43,
+      44,
+      45,
+      46,
+      47,
+      48,
+      49,
+      50,
+      51,
+      52,
+      53,
+      54,
+      55,
+      56,
+      57,
+      58,
+      59,
+      60,
+      61,
+      62,
+      63
+    ]
+  },
+  {
+    "id": "big_dripleaf_head",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "big_dripleaf_tilt",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "none",
+      "unstable",
+      "partial_tilt",
+      "full_tilt"
+    ]
+  },
+  {
+    "id": "growing_plant_age",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25
+    ]
+  },
+  {
+    "id": "dripstone_thickness",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "tip",
+      "frustum",
+      "middle",
+      "base",
+      "merge"
+    ]
+  },
+  {
+    "id": "respawn_anchor_charge",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4
+    ]
+  },
+  {
+    "id": "twisting_vines_age",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25
+    ]
+  },
+  {
+    "id": "rotation",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  {
+    "id": "wall_connection_type_west",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "none",
+      "short",
+      "tall"
+    ]
+  },
+  {
+    "id": "wall_connection_type_south",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "none",
+      "short",
+      "tall"
+    ]
+  },
+  {
+    "id": "wall_connection_type_east",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "none",
+      "short",
+      "tall"
+    ]
+  },
+  {
+    "id": "wall_connection_type_north",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "none",
+      "short",
+      "tall"
+    ]
+  },
+  {
+    "id": "wall_post_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "weeping_vines_age",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25
+    ]
+  },
+  {
+    "id": "honey_level",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ]
+  },
+  {
+    "id": "block_light_level",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ]
+  },
+  {
+    "id": "pillar_axis",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "y",
+      "x",
+      "z"
+    ]
+  },
+  {
+    "id": "lever_direction",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "down_east_west",
+      "east",
+      "west",
+      "south",
+      "north",
+      "up_north_south",
+      "up_east_west",
+      "down_north_south"
+    ]
+  },
+  {
+    "id": "coral_fan_direction",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1
+    ]
+  },
+  {
+    "id": "composter_fill_level",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8
+    ]
+  },
+  {
+    "id": "extinguished",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "structure_block_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "data",
+      "save",
+      "load",
+      "corner",
+      "invalid",
+      "export"
+    ]
+  },
+  {
+    "id": "structure_void_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "void",
+      "air"
+    ]
+  },
+  {
+    "id": "attachment",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "standing",
+      "hanging",
+      "side",
+      "multiple"
+    ]
+  },
+  {
+    "id": "coral_hang_type_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "stripped_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "hanging",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "cauldron_liquid",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "water",
+      "lava",
+      "powder_snow"
+    ]
+  },
+  {
+    "id": "coral_color",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "blue",
+      "pink",
+      "purple",
+      "red",
+      "yellow"
+    ]
+  },
+  {
+    "id": "sea_grass_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "default",
+      "double_top",
+      "double_bot"
+    ]
+  },
+  {
+    "id": "chemistry_table_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "compound_creator",
+      "material_reducer",
+      "element_constructor",
+      "lab_table"
+    ]
+  },
+  {
+    "id": "double_plant_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "sunflower",
+      "syringa",
+      "grass",
+      "fern",
+      "rose",
+      "paeonia"
+    ]
+  },
+  {
+    "id": "prismarine_block_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "default",
+      "dark",
+      "bricks"
+    ]
+  },
+  {
+    "id": "wall_block_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "cobblestone",
+      "mossy_cobblestone",
+      "granite",
+      "diorite",
+      "andesite",
+      "sandstone",
+      "brick",
+      "stone_brick",
+      "mossy_stone_brick",
+      "nether_brick",
+      "end_brick",
+      "prismarine",
+      "red_sandstone",
+      "red_nether_brick"
+    ]
+  },
+  {
+    "id": "huge_mushroom_bits",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ]
+  },
+  {
+    "id": "stone_brick_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "default",
+      "mossy",
+      "cracked",
+      "chiseled",
+      "smooth"
+    ]
+  },
+  {
+    "id": "monster_egg_stone_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "stone",
+      "cobblestone",
+      "stone_brick",
+      "mossy_stone_brick",
+      "cracked_stone_brick",
+      "chiseled_stone_brick"
+    ]
+  },
+  {
+    "id": "stone_slab_type_4",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "mossy_stone_brick",
+      "smooth_quartz",
+      "stone",
+      "cut_sandstone",
+      "cut_red_sandstone"
+    ]
+  },
+  {
+    "id": "stone_slab_type_3",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "end_stone_brick",
+      "smooth_red_sandstone",
+      "polished_andesite",
+      "andesite",
+      "diorite",
+      "polished_diorite",
+      "granite",
+      "polished_granite"
+    ]
+  },
+  {
+    "id": "stone_slab_type_2",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "red_sandstone",
+      "purpur",
+      "prismarine_rough",
+      "prismarine_dark",
+      "prismarine_brick",
+      "mossy_cobblestone",
+      "smooth_sandstone",
+      "red_nether_brick"
+    ]
+  },
+  {
+    "id": "stone_slab_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "smooth_stone",
+      "sandstone",
+      "wood",
+      "cobblestone",
+      "brick",
+      "stone_brick",
+      "quartz",
+      "nether_brick"
+    ]
+  },
+  {
+    "id": "flower_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "poppy",
+      "orchid",
+      "allium",
+      "houstonia",
+      "tulip_red",
+      "tulip_orange",
+      "tulip_white",
+      "tulip_pink",
+      "oxeye",
+      "cornflower",
+      "lily_of_the_valley"
+    ]
+  },
+  {
+    "id": "tall_grass_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "default",
+      "tall",
+      "fern",
+      "snow"
+    ]
+  },
+  {
+    "id": "sand_stone_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "default",
+      "heiroglyphs",
+      "cut",
+      "smooth"
+    ]
+  },
+  {
+    "id": "sponge_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "dry",
+      "wet"
+    ]
+  },
+  {
+    "id": "new_leaf_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "acacia",
+      "dark_oak"
+    ]
+  },
+  {
+    "id": "old_leaf_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "oak",
+      "spruce",
+      "birch",
+      "jungle"
+    ]
+  },
+  {
+    "id": "deprecated",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  {
+    "id": "chisel_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "default",
+      "chiseled",
+      "lines",
+      "smooth"
+    ]
+  },
+  {
+    "id": "new_log_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "acacia",
+      "dark_oak"
+    ]
+  },
+  {
+    "id": "old_log_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "oak",
+      "spruce",
+      "birch",
+      "jungle"
+    ]
+  },
+  {
+    "id": "sand_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "normal",
+      "red"
+    ]
+  },
+  {
+    "id": "dirt_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "normal",
+      "coarse"
+    ]
+  },
+  {
+    "id": "stone_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "stone",
+      "granite",
+      "granite_smooth",
+      "diorite",
+      "diorite_smooth",
+      "andesite",
+      "andesite_smooth"
+    ]
+  },
+  {
+    "id": "wood_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "oak",
+      "spruce",
+      "birch",
+      "jungle",
+      "acacia",
+      "dark_oak"
+    ]
+  },
+  {
+    "id": "stability_check",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "stability",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ]
+  },
+  {
+    "id": "bamboo_leaf_size",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "no_leaves",
+      "small_leaves",
+      "large_leaves"
+    ]
+  },
+  {
+    "id": "bamboo_stalk_thickness",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "thin",
+      "thick"
+    ]
+  },
+  {
+    "id": "color",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "white",
+      "orange",
+      "magenta",
+      "light_blue",
+      "yellow",
+      "lime",
+      "pink",
+      "gray",
+      "silver",
+      "cyan",
+      "purple",
+      "blue",
+      "brown",
+      "green",
+      "red",
+      "black"
+    ]
+  },
+  {
+    "id": "coral_direction",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  {
+    "id": "weirdo_direction",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  {
+    "id": "ground_sign_direction",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ]
+  },
+  {
+    "id": "cracked_state",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "no_cracks",
+      "cracked",
+      "max_cracked"
+    ]
+  },
+  {
+    "id": "turtle_egg_count",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "one_egg",
+      "two_egg",
+      "three_egg",
+      "four_egg"
+    ]
+  },
+  {
+    "id": "drag_down",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "torch_facing_direction",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "unknown",
+      "west",
+      "east",
+      "north",
+      "south",
+      "top"
+    ]
+  },
+  {
+    "id": "sapling_type",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "oak",
+      "spruce",
+      "birch",
+      "jungle",
+      "acacia",
+      "dark_oak",
+      "pale_oak"
+    ]
+  },
+  {
+    "id": "item_frame_map_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "cluster_count",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  {
+    "id": "dead_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "color_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "allow_underwater_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "vine_direction_bits",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ]
+  },
+  {
+    "id": "upside_down_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "update_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "triggered_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "top_slot_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "toggle_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "suspended_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "repeater_delay",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  {
+    "id": "redstone_signal",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ]
+  },
+  {
+    "id": "rail_direction",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9
+    ]
+  },
+  {
+    "id": "rail_data_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "powered_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "persistent_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "output_lit_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "output_subtract_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "open_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "occupied_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "kelp_age",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15,
+      16,
+      17,
+      18,
+      19,
+      20,
+      21,
+      22,
+      23,
+      24,
+      25
+    ]
+  },
+  {
+    "id": "no_drop_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "moisturized_amount",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ]
+  },
+  {
+    "id": "liquid_depth",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ]
+  },
+  {
+    "id": "in_wall_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "infiniburn_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "height",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ]
+  },
+  {
+    "id": "head_piece_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "growth",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7
+    ]
+  },
+  {
+    "id": "fill_level",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ]
+  },
+  {
+    "id": "facing_direction",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5
+    ]
+  },
+  {
+    "id": "explode_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "end_portal_eye_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "direction",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  {
+    "id": "upper_block_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "door_hinge_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "disarmed_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "damage",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "undamaged",
+      "slightly_damaged",
+      "very_damaged",
+      "broken"
+    ]
+  },
+  {
+    "id": "covered_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "conditional_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "button_pressed_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "brewing_stand_slot_c_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "brewing_stand_slot_b_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "brewing_stand_slot_a_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "bite_counter",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6
+    ]
+  },
+  {
+    "id": "portal_axis",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "unknown",
+      "x",
+      "z"
+    ]
+  },
+  {
+    "id": "attached_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "age",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ]
+  },
+  {
+    "id": "age_bit",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "minecraft:connection_down",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "minecraft:connection_up",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "minecraft:sixteen_way_rotation",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3,
+      4,
+      5,
+      6,
+      7,
+      8,
+      9,
+      10,
+      11,
+      12,
+      13,
+      14,
+      15
+    ]
+  },
+  {
+    "id": "minecraft:multi_block_part",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      0,
+      1,
+      2,
+      3
+    ]
+  },
+  {
+    "id": "minecraft:corner",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "none",
+      "inner_left",
+      "inner_right",
+      "outer_left",
+      "outer_right"
+    ]
+  },
+  {
+    "id": "minecraft:connection_west",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "minecraft:connection_south",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "minecraft:connection_east",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "minecraft:connection_north",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      false,
+      true
+    ]
+  },
+  {
+    "id": "minecraft:vertical_half",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "bottom",
+      "top"
+    ]
+  },
+  {
+    "id": "minecraft:block_face",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "down",
+      "up",
+      "north",
+      "south",
+      "west",
+      "east"
+    ]
+  },
+  {
+    "id": "minecraft:facing_direction",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "down",
+      "up",
+      "north",
+      "south",
+      "west",
+      "east"
+    ]
+  },
+  {
+    "id": "minecraft:cardinal_direction",
+    "keys": [
+      "id"
+    ],
+    "type": "object",
+    "values": [
+      "south",
+      "west",
+      "north",
+      "east"
+    ]
+  }
+]

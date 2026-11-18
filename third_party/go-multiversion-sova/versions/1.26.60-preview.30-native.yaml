@@ -1,0 +1,74 @@
+schema_version: 1
+target_game_version: "1.26.60.30"
+target_protocol_id: 2225
+stability: preview
+work_branch: "feat/all_26_u6"
+release_date: "2026-10-06"
+release_notes: "https://feedback.minecraft.net/hc/en-us/articles/49413473578637-Minecraft-Beta-Preview-26-60-30"
+candidate:
+  gophertunnel_commit: "8fe51a21de6d872394eed2b59d67b35e46fd52ac"
+  gophertunnel_parent: "4ea1495a39f24baf35f0f7a52e0f45f8bf33f69f"
+  upstream_commit: "28a5eec10daf1b8b6a205a477b909209b3bad794"
+  published: true
+  published_via: "4d6bffd4ed49ac9298d6abaa329415432a16f3e4"
+committed_dependency:
+  gophertunnel_commit: "4d6bffd4ed49ac9298d6abaa329415432a16f3e4"
+  module: "github.com/shawtymarco/gophertunnel@v1.57.1-0.20261011160103-4d6bffd4ed49"
+  native_protocol_id: 2225
+  repin_after_candidate_publication: false
+comparison:
+  previous_preview: "1.26.60.29"
+  previous_protocol_id: 2223
+  upstream_before: "28c02f07a0c081b08ef2ab77b2b517abde28da0a"
+  mojang_before: "d702218e4f1c79f62346adba74bbe95b295f1fd3"
+  mojang_after: "b484395bd5ba9c1d47fa4278fda9d0ea4a6daf86"
+  evidence: "1.26.60-preview.30-schema-diff.json"
+  schema_files_compared: 1014
+  packet_field_layout_changes: false
+  command_version_enum_changed: true
+  removed_level_event_ids: [9817, 9818, 9819, 9820]
+bds_catalog:
+  repository: "https://github.com/EndstoneMC/bedrock-server-data"
+  commit: "f63ebcd4d116952b2afeb1f7c67f5017a05aa6bc"
+  path: "preview/1.26.60-preview.30/metadata.json"
+  local_copy: "1.26.60-preview.30-bds.json"
+  metadata_sha256: "99d0db08fde9a522a0bd257680dd34a0de803430883f1fca565687aad7c1dd6e"
+  windows_archive_sha256: "3631505de328c94080088da1ec83d71e8a7db3fc69204c463068e1911437ce3b"
+  linux_archive_sha256: "bace5dae627a66020c6a6af3a25881ebda7f585b9fa3dadee23edfb566596574"
+  archives_downloaded: true
+  executed_archive: linux
+  linux_executable_sha256: "2c76ff3184906259f3964e5bf2ab9db414f1570b8179a3561637a134a7de72e7"
+data:
+  existing_bundle: "data/native2223"
+  existing_source_commit: "5f3cd976c61e171876c93419478fbcd9e46894dc"
+  existing_source_build: "1.26.60.29"
+  target_snapshot_available: true
+  target_bundle: "data/native2225"
+  acquisition: "Local exact-build vanilla packets and approved Script API/structure serializer enumeration."
+  source_manifest: "data/native2225/source.json"
+  typed_block_palette_equivalent_to_29: true
+  all_registry_equivalence_established: false
+  block_states: 23960
+  items: 2080
+  creative_entries: 1980
+  biomes: 89
+validation:
+  local_native_data_acquisition: passed
+  native_data_report: "data/native2225/validation.json"
+  asset_hash_reproduction: passed
+  loader_nbt_conversion: passed
+  loader_nbt_report: "data/native2225/normalization.json"
+  full_packet_reconstruction_from_nbt: passed
+  gophertunnel_tests_vet_build: passed
+  committed_dependency_tests_vet: passed
+  candidate_dependency_tests_vet_build: passed
+  candidate_override: "Disposable module files; no tracked local-path replacement."
+  native_identity_probe: 2225
+  request_network_settings_body_hex: "000008b1"
+deferred:
+  downstream_fork_publication_and_consumer_repin: true
+  target_registry_validation_and_conversion: false
+  command_request_vanilla_wire_validation: true
+  nethernet_consumer_integration: true
+  real_client_validation: true
+  production_enablement: true

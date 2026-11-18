@@ -1,0 +1,72 @@
+[
+  {
+    "bytes": 29509,
+    "path": "block_state_domains.json",
+    "sha256": "633cd7148e31f42f12f7205d50414a110cc84e3f074bcf1e7cb6f6f4db7a712d"
+  },
+  {
+    "bytes": 3413601,
+    "path": "block_states.nbt",
+    "sha256": "10cb917063440faef680a8bb84b5d0842a699508a0ff4afd2e0d52f1bc60c9a6"
+  },
+  {
+    "bytes": 275136,
+    "path": "block_to_item.json",
+    "sha256": "d04fab555b0af5eaaa7594aaf1c67ec3d824790be391bdc16f7a3be738f60551"
+  },
+  {
+    "bytes": 72764,
+    "path": "data_driven_blocks.nbt",
+    "sha256": "ea51c99ad3d7a30f7edf87b4a6cf658a884b371c5608028e2c0abe00a0df3000"
+  },
+  {
+    "bytes": 117184,
+    "path": "raw/item_tags.json",
+    "sha256": "1b71166d718c25203f4547d3963d90d7bd33fca50d8355d7434dc46c664c2b8f"
+  },
+  {
+    "bytes": 7667,
+    "path": "raw/biome_definitions.bin",
+    "sha256": "6c444ef1401a2a7f0dcd1de4eb744b9235b8bd578035f626562e48f732a0fb69"
+  },
+  {
+    "bytes": 1063236,
+    "path": "raw/crafting_data.bin",
+    "sha256": "919789e474f068982c0b690c7c5fc7c1949635e8ceea9736182ced1406682f8c"
+  },
+  {
+    "bytes": 56420,
+    "path": "raw/creative_content.bin",
+    "sha256": "3a1daef717fca2a507dd74074eccb6d5e35942ad7382b830179ff8c10f704f0a"
+  },
+  {
+    "bytes": 8971,
+    "path": "raw/entity_identifiers.bin",
+    "sha256": "b51bb887d20b8e4b1dd7537673cd0ea87087d0c886dcde1a0d2a133d02e49b15"
+  },
+  {
+    "bytes": 113566,
+    "path": "raw/item_registry.bin",
+    "sha256": "43a9ef888f7d13911c9203daf5a533000cdb62602a2886d54ffc2e4bea70e71b"
+  },
+  {
+    "bytes": 73911,
+    "path": "raw/start_game.bin",
+    "sha256": "3ccf5d4f9b9f7e28a5fa8688f12e203026344f3ac0a95a0d3d8495c381f293ab"
+  },
+  {
+    "bytes": 4171,
+    "path": "script_validation.json",
+    "sha256": "a9b785dfac7f0dc0d9d5f31c0a9436560a324060cc6b49ccd57ffd8358fdd8af"
+  },
+  {
+    "bytes": 1237,
+    "path": "validation.json",
+    "sha256": "4d4010bcc840932ff3530b130b22c223e1a13b62b0718177c6019a39e2e7c6fa"
+  },
+  {
+    "bytes": 204961,
+    "path": "vanilla_items.nbt",
+    "sha256": "a41c2c102e92a445421830448f4291297bfdd7b137d113cce281ac1845d1205e"
+  }
+]

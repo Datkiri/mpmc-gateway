@@ -1,0 +1,53 @@
+{
+  "block_identifiers": 1480,
+  "block_states": 23960,
+  "native_protocol": 2225,
+  "packet_type_value_roundtrips": [
+    "item_registry",
+    "start_game",
+    "creative_content",
+    "crafting_data",
+    "biome_definitions",
+    "entity_identifiers"
+  ],
+  "packets": {
+    "biome_definitions": {
+      "BiomeDefinitions": 89,
+      "StringList": 187
+    },
+    "crafting_data": {
+      "MaterialReducers": 0,
+      "MultiRecipes": 14,
+      "PotionContainerChangeRecipes": 2,
+      "PotionRecipes": 210,
+      "ShapedChemistryRecipes": 0,
+      "ShapedRecipes": 1219,
+      "ShapelessChemistryRecipes": 0,
+      "ShapelessRecipes": 2068,
+      "SmithingTransformRecipes": 12,
+      "SmithingTrimRecipes": 1,
+      "UserDataShapelessRecipes": 1456
+    },
+    "creative_content": {
+      "groups": 124,
+      "items": 1980,
+      "validated_block_hashes": 1020
+    },
+    "entity_identifiers": {
+      "SerialisedEntityIdentifiers": 8971
+    },
+    "item_registry": 2080,
+    "start_game": {
+      "data_driven_blocks": 98,
+      "experiments": 0,
+      "hashes": true
+    }
+  },
+  "property_types": {
+    "int32": 19789,
+    "string": 33972,
+    "uint8": 33202
+  },
+  "typed_block_states_equal_29": true,
+  "unread_packet_bytes": 0
+}

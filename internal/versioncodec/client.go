@@ -10,12 +10,20 @@ import (
 )
 
 // Client preserves wire IDs and recovers the embedded item table discarded by
-// the pinned 748/766 readers. Construct one wrapper per client connection.
+// the pinned 685/712/729/748/766 readers. Construct one wrapper per client
+// connection.
+//
+// Those five protocols all read StartGame's embedded item table into a local
+// variable and drop it on the wire, leaving GameData.Items with only the small
+// component-based ItemRegistry table (85-86 entries). The byte layout up to the
+// items field is identical in every one, so LegacyStartGameItems recovers it.
 func Client(base minecraft.Protocol) minecraft.Protocol {
-	if base.ID() != 748 && base.ID() != 766 {
+	switch base.ID() {
+	case 685, 712, 729, 748, 766:
+		return &legacyClient{Protocol: base}
+	default:
 		return base
 	}
-	return &legacyClient{Protocol: base}
 }
 
 type legacyClient struct {

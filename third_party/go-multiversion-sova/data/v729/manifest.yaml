@@ -1,0 +1,20 @@
+schema_version: 1
+protocol_id: 729
+game_versions: ["1.21.30", "1.21.31"]
+source:
+  repository: "https://github.com/df-mc/dragonfly"
+  commit: "a4d1a51c1f079887479cd000fb20b4e4c9bba66b"
+recipes_and_biomes: "data/v748"
+snapshots:
+  - file: "block_states.nbt"
+    source_path: "server/world/block_states.nbt"
+    bytes: 1915257
+    sha256: "839e0fd7fdec4cbf6ad1557eeae61a22d0c561cb9dabe641210eb68f549b52ed"
+  - file: "item_runtime_ids.nbt"
+    source_path: "server/world/item_runtime_ids.nbt"
+    bytes: 50261
+    sha256: "e73aa140fe7dacb4b41262be18af3e7617bbfb3c228f2985f6c1f9f74395b3ba"
+  - file: "creative_items.nbt"
+    source_path: "server/item/creative/creative_items.nbt"
+    bytes: 114508
+    sha256: "2218230d1cab25f6fef3ff37f62ab2a51dda60e089f78a7ba0a930044424c845"

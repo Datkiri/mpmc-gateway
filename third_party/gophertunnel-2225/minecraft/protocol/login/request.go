@@ -404,8 +404,17 @@ func EncodeOffline(identityData IdentityData, data ClientData, key *ecdsa.Privat
 		req.Certificate = certificate{Chain: chain{chainJWT}}
 		req.Legacy = true
 	} else {
+		// Older BDS builds walk Certificate.Chain before honouring
+		// AuthenticationType:2/Token, so send the same self-signed offline
+		// chain the legacy branch uses instead of the dummy chain{""}.
+		chainJWT, _ := jwt.Signed(signer).Claims(identityClaims{
+			Claims:            claims,
+			ExtraData:         identityData,
+			IdentityPublicKey: keyData,
+		}).Serialize()
+		req.Certificate = certificate{Chain: chain{chainJWT}}
+
 		claims.Audience = jwt.Audience{"api://auth-minecraft-services/multiplayer"}
-		req.Certificate = certificate{Chain: chain{""}}
 		req.Token, _ = jwt.Signed(signer).Claims(tokenClaims{
 			Claims:          claims,
 			ClientPublicKey: keyData,

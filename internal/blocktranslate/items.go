@@ -7,10 +7,18 @@ import (
 	"sync"
 
 	"github.com/df-mc/worldupgrader/itemupgrader"
+	v685 "github.com/shawtymarco/go-multiversion/data/v685"
+	v712 "github.com/shawtymarco/go-multiversion/data/v712"
+	v729 "github.com/shawtymarco/go-multiversion/data/v729"
 	v748 "github.com/shawtymarco/go-multiversion/data/v748"
 	v766 "github.com/shawtymarco/go-multiversion/data/v766"
+	v776 "github.com/shawtymarco/go-multiversion/data/v776"
+	v786 "github.com/shawtymarco/go-multiversion/data/v786"
+	v800 "github.com/shawtymarco/go-multiversion/data/v800"
+	v818 "github.com/shawtymarco/go-multiversion/data/v818"
 	v827 "github.com/shawtymarco/go-multiversion/data/v827"
 	v844 "github.com/shawtymarco/go-multiversion/data/v844"
+	v859 "github.com/shawtymarco/go-multiversion/data/v859"
 	v898 "github.com/shawtymarco/go-multiversion/data/v898"
 	v924 "github.com/shawtymarco/go-multiversion/data/v924"
 	v944 "github.com/shawtymarco/go-multiversion/data/v944"
@@ -90,6 +98,49 @@ func nativeEntries(src map[string]v1001.ItemEntry) []protocol.ItemEntry {
 func historicalTargetItems(id int32) (target map[string]mapping.TargetItem, err error) {
 	target = map[string]mapping.TargetItem{}
 	switch id {
+	case 685, 712, 729:
+		var src map[string]int32
+		switch id {
+		case 685:
+			src, err = v685.Items()
+		case 712:
+			src, err = v712.Items()
+		default:
+			src, err = v729.Items()
+		}
+		for name, runtimeID := range src {
+			target[name] = mapping.TargetItem{RuntimeID: runtimeID}
+		}
+	case 776:
+		var src map[string]v776.ItemEntry
+		src, err = v776.Items()
+		for name, s := range src {
+			target[name] = mapping.TargetItem{RuntimeID: s.RuntimeID, ComponentBased: s.ComponentBased, Version: s.Version, Data: s.Data}
+		}
+	case 786:
+		var src map[string]v786.ItemEntry
+		src, err = v786.Items()
+		for name, s := range src {
+			target[name] = mapping.TargetItem{RuntimeID: s.RuntimeID, ComponentBased: s.ComponentBased, Version: s.Version, Data: s.Data}
+		}
+	case 800:
+		var src map[string]v800.ItemEntry
+		src, err = v800.Items()
+		for name, s := range src {
+			target[name] = mapping.TargetItem{RuntimeID: s.RuntimeID, ComponentBased: s.ComponentBased, Version: s.Version, Data: s.Data}
+		}
+	case 818:
+		var src map[string]v818.ItemEntry
+		src, err = v818.Items()
+		for name, s := range src {
+			target[name] = mapping.TargetItem{RuntimeID: s.RuntimeID, ComponentBased: s.ComponentBased, Version: s.Version, Data: s.Data}
+		}
+	case 859:
+		var src map[string]v859.ItemEntry
+		src, err = v859.Items()
+		for name, s := range src {
+			target[name] = mapping.TargetItem{RuntimeID: s.RuntimeID, ComponentBased: s.ComponentBased, Version: s.Version, Data: s.Data}
+		}
 	case 748, 766:
 		var src map[string]int32
 		if id == 748 {
@@ -152,13 +203,13 @@ func historicalItemMapper(id int32, native []protocol.ItemEntry, target map[stri
 		if name == "minecraft:reeds" {
 			name = "minecraft:sugar_cane"
 		}
-		if (id == 748 || id == 766 || id == 827) && name == "minecraft:chain" {
+		if (id == 685 || id == 712 || id == 729 || id == 748 || id == 766 || id == 776 || id == 786 || id == 800 || id == 818 || id == 827 || id == 859) && name == "minecraft:chain" {
 			name = "minecraft:iron_chain"
 		}
 		return name
 	}
 	switch id {
-	case 748, 766, 898, 924, 944:
+	case 685, 712, 729, 748, 766, 776, 786, 800, 818, 859, 898, 924, 944:
 		return mapping.NewItemMapperAllowingTargetOnly(native, target, resolve)
 	default:
 		return mapping.NewItemMapperWithResolver(native, target, resolve)
@@ -222,7 +273,7 @@ func loadItems() {
 		return
 	}
 	itemCatalog.items[2193] = entries2193
-	for _, id := range []int32{748, 766, 827, 844, 898, 924, 944, 975} {
+	for _, id := range []int32{685, 712, 729, 748, 766, 776, 786, 800, 818, 827, 844, 859, 898, 924, 944, 975} {
 		target, err := historicalTargetItems(id)
 		if err != nil {
 			itemCatalog.err = fmt.Errorf("protocol%d item snapshot: %w", id, err)
