@@ -84,8 +84,9 @@ ViaProxy → Java 1.21.11`. Host phải **chủ động** phát `ResponsePacket`
   `skipped=0`, 0 ERROR. `CGO_ENABLED=0 go test -buildvcs=false` 4/4 package `ok`.
 - `lan255/xver-lan255.patch` = diff `e3bb416..59b350a` của Go relay (Announce/
   Advertise/Broadcasts, `announceLoop`, `-lan-offline-auth`, fix `ClientData.Validate`
-  nhận network ID thập phân, degrade custom block Geyser). Lịch sử đầy đủ nằm ở
-  branch **`xver-relay`** của chính repo này, HEAD `59b350a`.
+  nhận network ID thập phân, degrade custom block Geyser). `59b350a` là commit lịch sử
+  LAN-255 được trích dẫn trong patch; lịch sử mới nhất nằm ở branch **`xver-relay`**
+  của chính repo này.
 - Chi tiết: `docs/M6-BEDROCK.md §10.7`. Firewall mở 7551/8555/19164/19132/19134
   (LocalSubnet) + rule theo program cho mọi port ICE ephemeral.
 
@@ -112,6 +113,6 @@ Branch `xver-relay` chứa `third_party/` (gophertunnel/go-nethernet fork) và
 - ~~`Datkiri/bedrock-cross-version-relay`~~: repo công khai cũ đã biến mất, repo private
   tạo lại nhầm **đã xóa 12/11** (`gh api` 404). **Không tạo lại.** Commit local giữ nguyên.
 - `Datkiri/mpmc-gateway` là **repo duy nhất** được phép: `main` = snapshot này,
-  `xver-relay` = lịch sử Go relay (HEAD `59b350a`).
+  `xver-relay` = lịch sử Go relay (HEAD `59258f0`, sau commit lịch sử LAN-255 `59b350a`).
 - Base fork: ViaBedrock `3756cc0`, ViaProxy `1cc5364`.
 - Commit local: ViaBedrock `8e5162e`, ViaProxy `bd4af0a` (branch `mpmc.18`).
